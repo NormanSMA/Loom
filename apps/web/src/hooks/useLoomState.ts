@@ -11,6 +11,8 @@ import type {
   ProviderManifest,
   SkillEntry,
   TelemetrySnapshot,
+  TotpSetup,
+  TotpStatus,
 } from '../types/api'
 
 const SNAPSHOT_KEY = 'loom.offline.snapshot.v1'
@@ -53,12 +55,17 @@ export function useLoomState() {
   const [telemetry, setTelemetry] = useState<TelemetrySnapshot | null>(initial?.telemetry ?? null)
   const [claudehub, setClaudehub] = useState<ClaudeHubBridge | null>(initial?.claudehub ?? null)
   const [devices, setDevices] = useState<DeviceView[]>([])
+  const [totpStatus, setTotpStatus] = useState<TotpStatus>({
+    enrolled: false,
+    remote_enabled: false,
+    bind: '127.0.0.1',
+  })
   const [liveEvent, setLiveEvent] = useState<LiveEvent | null>(null)
   const [lastSync, setLastSync] = useState<string | null>(initial?.savedAt ?? null)
 
   const refresh = useCallback(async () => {
     try {
-      const [h, d, p, s, m, tel, ch, dev] = await Promise.all([
+      const [h, d, p, s, m, tel, ch, dev, totp] = await Promise.all([
         fetchJson<HealthInfo>('/api/health'),
         fetchJson<DoctorReport>('/api/doctor'),
         fetchJson<ProviderManifest[]>('/api/providers'),
@@ -67,6 +74,7 @@ export function useLoomState() {
         fetchJson<TelemetrySnapshot>('/api/telemetry'),
         fetchJson<ClaudeHubBridge>('/api/claudehub'),
         fetchJson<DeviceView[]>('/api/devices'),
+        fetchJson<Partial<TotpStatus>>('/api/auth/totp/status').catch((): Partial<TotpStatus> => ({})),
       ])
       const now = new Date().toISOString()
       setHealth(h)
@@ -77,6 +85,13 @@ export function useLoomState() {
       setTelemetry(tel)
       setClaudehub(ch)
       setDevices(dev)
+      if (typeof totp?.enrolled === 'boolean') {
+        setTotpStatus({
+          enrolled: totp.enrolled,
+          remote_enabled: Boolean(totp.remote_enabled),
+          bind: typeof totp.bind === 'string' && totp.bind ? totp.bind : '127.0.0.1',
+        })
+      }
       setOnline(true)
       setLastSync(now)
       saveCached({ savedAt: now, missions: m, telemetry: tel, claudehub: ch })
@@ -144,6 +159,19 @@ export function useLoomState() {
     void refresh()
   }
 
+  const setupTotp = () =>
+    fetchJson<TotpSetup>('/api/auth/totp/setup', { method: 'POST' })
+
+  const verifyTotp = async (code: string) => {
+    const resp = await fetchJson<{ verified: boolean; enrolled: boolean }>('/api/auth/totp/verify', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code }),
+    })
+    setTotpStatus((prev) => ({ ...prev, enrolled: resp.enrolled }))
+    return resp.verified
+  }
+
   return {
     isOffline: !online || simulatedOffline,
     simulatedOffline,
@@ -156,12 +184,15 @@ export function useLoomState() {
     telemetry,
     claudehub,
     devices,
+    totpStatus,
     liveEvent,
     lastSync,
     refresh,
     createMission,
     createPairing,
     revokeDevice,
+    setupTotp,
+    verifyTotp,
     emergencyStop,
   }
 }

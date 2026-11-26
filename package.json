@@ -7,6 +7,7 @@
     "web:build": "pnpm --filter loom-web build",
     "web:typecheck": "pnpm --filter loom-web typecheck",
     "web:test": "pnpm --filter loom-web test",
-    "web:test:i18n": "pnpm --filter loom-web test:i18n"
+    "web:test:i18n": "pnpm --filter loom-web test:i18n",
+    "web:e2e": "pnpm --filter loom-web test:e2e"
   }
 }
