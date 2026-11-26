@@ -1,4 +1,4 @@
-﻿name: CI
+name: CI
 
 on:
   push:
@@ -33,3 +33,30 @@ jobs:
 
       - name: Run tests
         run: cargo test --workspace
+
+  web-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm web:typecheck
+
+      - name: Verify i18n parity
+        run: pnpm web:test:i18n
+
+      - name: Run unit tests
+        run: pnpm web:test
+
+      - name: Build production bundle
+        run: pnpm web:build

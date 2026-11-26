@@ -1,0 +1,37 @@
+services:
+  loomd:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: loomd
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4320:4320"
+    volumes:
+      - loom-data:/root/.loom
+    environment:
+      - RUST_LOG=info
+
+  omniroute:
+    image: diegosouzapw/omniroute:3.8.52
+    container_name: omniroute
+    profiles: ["routing"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:20128:20128"
+    volumes:
+      - omniroute-data:/app/data
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: loom-tunnel
+    profiles: ["remote"]
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - loomd
+
+volumes:
+  loom-data:
+  omniroute-data:
