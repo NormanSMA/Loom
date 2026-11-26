@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { notifyLoomEvent, playLoomSound } from '../lib/sound'
 import type {
   ArtifactPreview,
   CachedSnapshot,
@@ -66,7 +67,8 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return (await resp.json()) as T
 }
 
-export function useLoomState() {
+export function useLoomState(options: { enableAudio?: boolean } = {}) {
+  const enableAudio = options.enableAudio ?? true
   const initial = loadCached()
   const [online, setOnline] = useState(true)
   const [simulatedOffline, setSimulatedOffline] = useState(false)
@@ -168,6 +170,7 @@ export function useLoomState() {
         }
         setPairedDevice(res.device)
         setPairingNotice('ok')
+        playLoomSound('complete')
         void refresh()
       } catch {
         if (active) setPairingNotice('error')
@@ -189,11 +192,41 @@ export function useLoomState() {
     let ws: WebSocket | null = null
     try {
       ws = new WebSocket(`${proto}//${window.location.host}/api/ws`)
+      let prevLiveState = ''
       ws.onmessage = (ev) => {
         try {
           const parsed = JSON.parse(String(ev.data)) as LiveEvent
-          if (parsed.kind === 'agent_activity' || parsed.kind === 'mission_created') {
+          if (
+            parsed.kind === 'agent_activity' ||
+            parsed.kind === 'mission_created' ||
+            parsed.kind === 'mission_completed' ||
+            parsed.kind === 'mission_cancelled'
+          ) {
             setLiveEvent(parsed)
+          }
+          if (enableAudio) {
+            if (parsed.kind === 'mission_completed') {
+              notifyLoomEvent(
+                'Misión completada',
+                parsed.target ?? parsed.detail ?? 'Loom',
+                'complete',
+              )
+            } else if (parsed.kind === 'mission_cancelled') {
+              playLoomSound('alert')
+            } else {
+              const nextState: string = parsed.state ?? ''
+              if (
+                nextState &&
+                nextState !== prevLiveState &&
+                (nextState === 'reading' ||
+                  nextState === 'thinking' ||
+                  nextState === 'analysing' ||
+                  nextState === 'debugging')
+              ) {
+                prevLiveState = nextState
+                playLoomSound('stateChange')
+              }
+            }
           }
         } catch {
           /* ignore non-event payloads */
@@ -203,7 +236,7 @@ export function useLoomState() {
       /* ignore ws errors in test jsdom */
     }
     return () => ws?.close()
-  }, [online, simulatedOffline])
+  }, [online, simulatedOffline, enableAudio])
 
   const generateImage = async (payload: {
     prompt: string
@@ -237,6 +270,7 @@ export function useLoomState() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload),
     })
+    playLoomSound('dispatch')
     setMissions((prev) => [created, ...prev])
     if (payload.mode === 'image') {
       await generateImage({ prompt: payload.title, mission_id: created.id })
@@ -259,6 +293,11 @@ export function useLoomState() {
       },
     )
     setMissions((prev) => prev.map((m) => (m.id === id ? updated : m)))
+    if (decision === 'approve') {
+      notifyLoomEvent('Misión aprobada', updated.title, 'complete')
+    } else {
+      playLoomSound('alert')
+    }
     return updated
   }
 
@@ -275,7 +314,15 @@ export function useLoomState() {
   }
 
   const emergencyStop = async () => {
-    await fetchJson('/api/emergency-stop', { method: 'POST' })
+    const resp = await fetchJson<{ stopped?: number }>('/api/emergency-stop', { method: 'POST' })
+    const count = typeof resp?.stopped === 'number' ? resp.stopped : 0
+    if (enableAudio) {
+      notifyLoomEvent(
+        'Parada total activada',
+        count > 0 ? `${count} agente(s) detenidos` : 'Sin agentes activos',
+        'alert',
+      )
+    }
     void refresh()
   }
 

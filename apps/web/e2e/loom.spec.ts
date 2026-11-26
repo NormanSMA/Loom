@@ -40,8 +40,28 @@ test.describe('Loom UI E2E', () => {
     await page.getByRole('button', { name: 'Despachar' }).click()
     await expect(page.getByAltText('Vista previa generada')).toBeVisible()
 
-    // Navigate to Ajustes for language, profile and theme toggles
+    // Navigate to Ajustes for language, profile, sound and theme toggles
     await page.getByRole('button', { name: 'Ajustes y perfil' }).click()
+    const soundTopbarToggle = page
+      .locator('header')
+      .getByRole('button', { name: 'Efectos de sonido' })
+    await expect(soundTopbarToggle).toHaveAttribute('aria-pressed', 'true')
+    await soundTopbarToggle.click()
+    await expect(soundTopbarToggle).toHaveAttribute('aria-pressed', 'false')
+    await soundTopbarToggle.click()
+    await expect(soundTopbarToggle).toHaveAttribute('aria-pressed', 'true')
+
+    await expect(page.getByText('Sonido y notificaciones')).toBeVisible()
+    const soundEffectsToggle = page
+      .locator('main')
+      .getByRole('button', { name: 'Efectos de sonido', exact: true })
+    await expect(soundEffectsToggle).toHaveAttribute('aria-pressed', 'true')
+    await soundEffectsToggle.click()
+    await expect(soundEffectsToggle).toHaveAttribute('aria-pressed', 'false')
+    await soundEffectsToggle.click()
+    await expect(soundEffectsToggle).toHaveAttribute('aria-pressed', 'true')
+    await page.getByRole('button', { name: 'Probar sonido' }).click()
+
     const lang = page.getByLabel('language')
     await lang.selectOption('en')
     await expect(page.getByRole('heading', { name: 'Settings & profile' })).toBeVisible()

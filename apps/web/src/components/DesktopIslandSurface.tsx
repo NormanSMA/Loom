@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useLoomState } from '../hooks/useLoomState'
 import { useI18n } from '../i18n'
+import { playLoomSound } from '../lib/sound'
 import { AgentGlyph } from './AgentGlyph'
 
 export function DesktopIslandSurface() {
   const { t } = useI18n()
-  const loom = useLoomState()
+  const loom = useLoomState({ enableAudio: false })
   const [expanded, setExpanded] = useState(false)
 
   const event = loom.liveEvent
@@ -20,7 +21,10 @@ export function DesktopIslandSurface() {
     <div data-tauri-drag-region className="flex w-full justify-center px-2">
       <button
         type="button"
-        onClick={() => setExpanded((prev) => !prev)}
+        onClick={() => {
+          playLoomSound('click')
+          setExpanded((prev) => !prev)
+        }}
         aria-expanded={expanded}
         className="notch-shell notch-no-drag min-h-11 w-full max-w-xs px-4 py-2 text-left focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)]"
       >

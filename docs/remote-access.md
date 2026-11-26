@@ -90,3 +90,16 @@ loomd --remote --public-url https://loom.tu-dominio.com
 3. Revoca sesiones perdidas o robadas al instante desde la lista de dispositivos (`DELETE /api/devices/{id}`).
 4. Usa el boton **Parada total** (`POST /api/emergency-stop`) para cancelar subagentes activos ante cualquier anomalia.
 5. Nunca configures `bind = "0.0.0.0"` directo hacia internet publica sin TLS ni control de acceso.
+
+---
+
+## Cliente nativo Android (`apps/android`)
+
+1. Para pruebas locales por USB sin exponer red:
+
+```bash
+adb reverse tcp:4320 tcp:4320
+```
+
+2. Mantén `http://127.0.0.1:4320` como nodo USB o apunta al dominio `https://` de tu tunel en el selector nativo superior (`Configurar nodo`).
+3. La app bloquea trafico HTTP externo mediante `network_security_config.xml` (cleartext permitido solo en loopback local) y conecta `window.LoomAndroidBridge` para notificaciones locales y audio PCM.

@@ -111,7 +111,11 @@ fn setup_windows(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .inner_size(1240.0, 820.0)
         .min_inner_size(375.0, 640.0)
         .resizable(true)
+        .visible(true)
         .build()?;
+    let _ = main_win.show();
+    let _ = main_win.unminimize();
+    let _ = main_win.set_focus();
 
     let main_win_handle = main_win.clone();
     main_win.on_window_event(move |event| {
@@ -131,7 +135,8 @@ fn setup_windows(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             .always_on_top(true)
             .skip_taskbar(true)
             .resizable(false)
-            .shadow(false);
+            .shadow(false)
+            .visible(true);
 
     if let Ok(Some(monitor)) = app.primary_monitor() {
         let scale = monitor.scale_factor();
@@ -142,7 +147,8 @@ fn setup_windows(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         island_builder = island_builder.position(x, y);
     }
 
-    island_builder.build()?;
+    let island_win = island_builder.build()?;
+    let _ = island_win.show();
     Ok(())
 }
 

@@ -1,6 +1,15 @@
-import { useId } from 'react'
-import { ChevronDown, Globe, Lock, Monitor, Moon, Sun, User } from 'lucide-react'
+import { useEffect, useId, useState } from 'react'
+import { Bell, ChevronDown, Globe, Lock, Monitor, Moon, Sun, User, Volume2, VolumeX } from 'lucide-react'
 import { useI18n, type LocaleCode } from '../i18n'
+import {
+  getSoundPreferences,
+  notifyLoomEvent,
+  playLoomSound,
+  requestNotificationPermission,
+  setSoundPreferences,
+  subscribeSoundPreferences,
+  type SoundPreferences,
+} from '../lib/sound'
 
 export interface UserProfile {
   name: string
@@ -27,6 +36,12 @@ interface SettingsCopy {
   interfaceTitle: string
   languageLabel: string
   themeLabel: string
+  soundSectionTitle: string
+  soundEffectsLabel: string
+  notificationsLabel: string
+  testSoundLabel: string
+  testNotifyTitle: string
+  testNotifyBody: string
   integrationTitle: string
   integrationBody: string
   integrationDesktopBadge: string
@@ -46,6 +61,12 @@ const SETTINGS_COPY: Record<LocaleCode, SettingsCopy> = {
     interfaceTitle: 'Preferencias de interfaz',
     languageLabel: 'Idioma',
     themeLabel: 'Tema',
+    soundSectionTitle: 'Sonido y notificaciones',
+    soundEffectsLabel: 'Efectos de sonido',
+    notificationsLabel: 'Notificaciones de misiones',
+    testSoundLabel: 'Probar sonido',
+    testNotifyTitle: 'Sonido de prueba Loom',
+    testNotifyBody: 'Alertas sonoras y notificaciones activas.',
     integrationTitle: 'Integración de sistema (Desktop vs Web)',
     integrationBody:
       'La cápsula flotante (Dynamic Island / Notch estilo ClaudeHub) pertenece al overlay nativo de escritorio en Windows, macOS y Linux (Tauri v2). En la vista web, la actividad del agente se muestra integrada directamente encima del compositor de misiones.',
@@ -64,6 +85,12 @@ const SETTINGS_COPY: Record<LocaleCode, SettingsCopy> = {
     interfaceTitle: 'Interface preferences',
     languageLabel: 'Language',
     themeLabel: 'Theme',
+    soundSectionTitle: 'Sound & notifications',
+    soundEffectsLabel: 'Sound effects',
+    notificationsLabel: 'Mission notifications',
+    testSoundLabel: 'Test sound',
+    testNotifyTitle: 'Loom test sound',
+    testNotifyBody: 'Sound cues and notifications active.',
     integrationTitle: 'System integration (Desktop vs Web)',
     integrationBody:
       'The floating capsule (ClaudeHub-style Dynamic Island / Notch) belongs to the native desktop overlay on Windows, macOS, and Linux (Tauri v2). On the web, agent activity is rendered inline directly above the mission composer.',
@@ -82,6 +109,12 @@ const SETTINGS_COPY: Record<LocaleCode, SettingsCopy> = {
     interfaceTitle: 'Preferências de interface',
     languageLabel: 'Idioma',
     themeLabel: 'Tema',
+    soundSectionTitle: 'Som e notificações',
+    soundEffectsLabel: 'Efeitos sonoros',
+    notificationsLabel: 'Notificações de missões',
+    testSoundLabel: 'Testar som',
+    testNotifyTitle: 'Som de teste Loom',
+    testNotifyBody: 'Alertas sonoros e notificações ativos.',
     integrationTitle: 'Integração do sistema (Desktop vs Web)',
     integrationBody:
       'A cápsula flutuante (Dynamic Island / Notch estilo ClaudeHub) pertence ao overlay nativo de desktop no Windows, macOS e Linux (Tauri v2). Na web, a atividade do agente é exibida integrada diretamente acima do compositor de missões.',
@@ -101,6 +134,39 @@ export function SettingsView({
   const nameId = useId()
   const roleId = useId()
   const languageId = useId()
+  const [soundPrefs, setSoundPrefs] = useState<SoundPreferences>(getSoundPreferences)
+
+  useEffect(() => subscribeSoundPreferences(setSoundPrefs), [])
+
+  const handleToggleSound = () => {
+    const next = setSoundPreferences({ enabled: !soundPrefs.enabled })
+    setSoundPrefs(next)
+    if (next.enabled) {
+      playLoomSound('click', { fromUserGesture: true })
+    }
+  }
+
+  const handleToggleNotifications = () => {
+    const hasNative =
+      typeof window !== 'undefined' && Boolean(window.LoomAndroidBridge)
+    const browserPerm =
+      typeof Notification !== 'undefined' ? Notification.permission : 'granted'
+    if (!hasNative && browserPerm === 'default' && !soundPrefs.notifications) {
+      void requestNotificationPermission()
+    } else if (!hasNative && browserPerm === 'default') {
+      void requestNotificationPermission()
+    }
+    const nextEnabled = !soundPrefs.notifications
+    const next = setSoundPreferences({ notifications: nextEnabled })
+    setSoundPrefs(next)
+  }
+
+  const handleTestSound = () => {
+    playLoomSound('test', { fromUserGesture: true })
+    notifyLoomEvent(copy.testNotifyTitle, copy.testNotifyBody, 'complete', {
+      skipAudio: true,
+    })
+  }
 
   return (
     <div className="space-y-4">
@@ -262,6 +328,54 @@ export function SettingsView({
                   {t('theme.light')}
                 </button>
               </div>
+            </div>
+
+            <div className="border-t border-[var(--border-subtle)] pt-4">
+              <p className="mb-2 font-mono text-xs text-[var(--text-secondary)]">
+                {copy.soundSectionTitle}
+              </p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  aria-pressed={soundPrefs.enabled}
+                  onClick={handleToggleSound}
+                  className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)] ${
+                    soundPrefs.enabled
+                      ? 'border-[var(--accent-blue)] bg-[var(--accent-blue-soft)] text-[var(--text-primary)]'
+                      : 'border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                  }`}
+                >
+                  {soundPrefs.enabled ? (
+                    <Volume2 className="h-4 w-4 shrink-0 text-[var(--accent-blue)]" aria-hidden="true" />
+                  ) : (
+                    <VolumeX className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  )}
+                  {copy.soundEffectsLabel}
+                </button>
+
+                <button
+                  type="button"
+                  aria-pressed={soundPrefs.notifications}
+                  onClick={handleToggleNotifications}
+                  className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)] ${
+                    soundPrefs.notifications
+                      ? 'border-[var(--accent-blue)] bg-[var(--accent-blue-soft)] text-[var(--text-primary)]'
+                      : 'border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                  }`}
+                >
+                  <Bell className="h-4 w-4 shrink-0 text-[var(--accent-blue)]" aria-hidden="true" />
+                  {copy.notificationsLabel}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleTestSound}
+                className="loom-elevated mt-2 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[var(--border-subtle)] px-3 text-xs font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent-blue)] active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)]"
+              >
+                <Volume2 className="h-4 w-4 shrink-0 text-[var(--accent-blue)]" aria-hidden="true" />
+                {copy.testSoundLabel}
+              </button>
             </div>
           </div>
         </section>

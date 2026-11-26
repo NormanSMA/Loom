@@ -42,9 +42,11 @@ cargo run -p loomd -- --demo --static-dir apps/web/dist
 
 Abre `http://127.0.0.1:4321`.
 
-## Aplicación de escritorio (Tauri v2)
+## Aplicación de escritorio (Tauri v2) y Android
 
-Ejecuta la aplicación nativa de escritorio con `pnpm desktop:dev`. Incluye menú en la bandeja del sistema (`Mostrar Loom`, `Parada total`) e isla flotante superior nativa que refleja el estado de los agentes en tiempo real.
+- **Escritorio (`Tauri v2`)**: ejecuta `pnpm desktop:dev`. Incluye bandeja del sistema (`Mostrar Loom`, `Parada total`), notificaciones, efectos de sonido configurables e isla flotante superior.
+- **Android (`apps/android`)**: cliente nativo Kotlin (`dev.nsma.loom`) con puente de sonido PCM y notificaciones locales. Conecta tu equipo vía USB (`pnpm android:install`) o apunta a tu túnel HTTPS en Ajustes.
+- **Landing oficial**: [loom.nsma.dev](https://loom.nsma.dev) ([NormanSMA/loom-web](https://github.com/NormanSMA/loom-web)).
 
 ## Comandos rápidos
 

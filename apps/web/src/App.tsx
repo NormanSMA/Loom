@@ -6,6 +6,7 @@ import { Sidebar, type NavTab } from './components/Sidebar'
 import { TopBar } from './components/TopBar'
 import { useLoomState } from './hooks/useLoomState'
 import { I18nProvider, useI18n } from './i18n'
+import { playLoomSound } from './lib/sound'
 import { ConnectorsView } from './views/ConnectorsView'
 import { KnowledgeView } from './views/KnowledgeView'
 import { MissionsView } from './views/MissionsView'
@@ -67,12 +68,19 @@ function LoomShell() {
     )
   }
 
+  const handleSelectTab = (next: NavTab) => {
+    if (next !== tab) {
+      playLoomSound('click')
+      setTab(next)
+    }
+  }
+
   return (
     <div className="loom-dot-bg flex min-h-screen pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-0">
       <Sidebar
         activeTab={tab}
-        onSelect={setTab}
-        onNewMission={() => setTab('missions')}
+        onSelect={handleSelectTab}
+        onNewMission={() => handleSelectTab('missions')}
         profileName={profile.name}
       />
 
@@ -80,7 +88,7 @@ function LoomShell() {
         <TopBar
           demo={loom.health?.demo ?? false}
           remoteEnabled={loom.totpStatus.remote_enabled}
-          onOpenSettings={() => setTab('settings')}
+          onOpenSettings={() => handleSelectTab('settings')}
           onEmergencyStop={loom.emergencyStop}
         />
 
