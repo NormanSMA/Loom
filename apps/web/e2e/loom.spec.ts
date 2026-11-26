@@ -37,15 +37,28 @@ test.describe('Loom UI E2E', () => {
 
     await page.getByRole('button', { name: 'Generar QR efimero' }).click()
     await expect(page.getByText(/^lm_/)).toBeVisible()
+    await expect(page.getByAltText('Codigo QR para emparejar dispositivo')).toBeVisible()
+    const pairLink = (await page.locator('a[href*="?pair="]').getAttribute('href')) ?? ''
+    expect(pairLink).toContain('?pair=lm_')
 
     await page.getByRole('button', { name: 'Configurar TOTP' }).click()
     await expect(page.getByText(/^otpauth:\/\/totp\//)).toBeVisible()
+    await expect(page.getByAltText('Codigo QR para configurar TOTP')).toBeVisible()
 
     await page.getByRole('button', { name: 'Probar reposo' }).click()
     await expect(page.getByText('El nodo Loom en tu equipo esta en reposo')).toBeVisible()
     await expect(page.locator('canvas')).toBeVisible()
     await page.getByRole('button', { name: 'Volver al nodo' }).click()
     await expect(page.getByRole('heading', { name: 'Acceso remoto y control' })).toBeVisible()
+
+    // One-tap auto-pairing from scanned QR URI
+    await page.goto(pairLink)
+    await expect(page.getByText(/Dispositivo vinculado correctamente:/)).toBeVisible()
+    await expect.poll(() => page.url()).not.toContain('?pair=')
+
+    await page.locator('button:visible', { hasText: 'Seguridad' }).first().click()
+    await expect(page.getByText('Activo').first()).toBeVisible()
+
     await page.locator('button:visible', { hasText: 'Misiones' }).first().click()
     await expect(page.getByRole('heading', { name: 'Centro de misiones' })).toBeVisible()
 

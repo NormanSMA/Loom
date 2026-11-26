@@ -1,20 +1,26 @@
 import { useState, type FormEvent } from 'react'
-import { QrCode, ShieldCheck, Smartphone, WifiOff } from 'lucide-react'
+import { Check, Copy, QrCode, ShieldCheck, Smartphone, WifiOff } from 'lucide-react'
 import { useI18n } from '../i18n'
-import type { DeviceView, PairingTicket, TotpSetup, TotpStatus } from '../types/api'
+import type { DeviceView, NetworkInfo, PairingTicket, TotpSetup, TotpStatus } from '../types/api'
 
 interface SecurityViewProps {
   devices: DeviceView[]
+  network: NetworkInfo | null
   totpStatus: TotpStatus
-  onCreatePairing: () => Promise<PairingTicket>
+  onCreatePairing: (baseUrl?: string) => Promise<PairingTicket>
   onRevokeDevice: (id: string) => Promise<void>
   onSetupTotp: () => Promise<TotpSetup>
   onVerifyTotp: (code: string) => Promise<boolean>
   onSimulateOffline: () => void
 }
 
+function qrDataUri(svg: string): string {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+}
+
 export function SecurityView({
   devices,
+  network,
   totpStatus,
   onCreatePairing,
   onRevokeDevice,
@@ -24,13 +30,25 @@ export function SecurityView({
 }: SecurityViewProps) {
   const { t } = useI18n()
   const [ticket, setTicket] = useState<PairingTicket | null>(null)
+  const [copied, setCopied] = useState(false)
   const [totpSetup, setTotpSetup] = useState<TotpSetup | null>(null)
   const [totpCode, setTotpCode] = useState('')
   const [totpError, setTotpError] = useState(false)
 
   const handlePair = async () => {
+    setCopied(false)
     const next = await onCreatePairing()
     setTicket(next)
+  }
+
+  const handleCopy = async () => {
+    if (!ticket) return
+    try {
+      await navigator.clipboard.writeText(ticket.qr_uri)
+      setCopied(true)
+    } catch {
+      /* ignore clipboard error in headless contexts */
+    }
   }
 
   const handleSetupTotp = async () => {
@@ -66,6 +84,15 @@ export function SecurityView({
         </span>
       </div>
 
+      {network?.public_url && (
+        <section className="loom-card rounded-2xl p-4">
+          <p className="font-mono text-xs text-[var(--text-muted)]">{t('security.tunnelUrl')}</p>
+          <p className="mt-1 break-all font-mono text-xs text-[var(--accent-green)]">
+            {network.public_url}
+          </p>
+        </section>
+      )}
+
       <div className="flex flex-wrap gap-3">
         <button
           type="button"
@@ -96,11 +123,32 @@ export function SecurityView({
       </div>
 
       {ticket && (
-        <section className="loom-card rounded-2xl p-4">
-          <p className="font-mono text-xs text-[var(--accent-green)]">{ticket.code}</p>
-          <p className="mt-1 break-all font-mono text-xs text-[var(--text-secondary)]">
-            {ticket.qr_uri}
-          </p>
+        <section className="loom-card flex flex-col items-start gap-4 rounded-2xl p-4 sm:flex-row sm:items-center">
+          {ticket.qr_svg && (
+            <img
+              src={qrDataUri(ticket.qr_svg)}
+              alt={t('security.qrAlt')}
+              className="h-56 w-56 shrink-0 rounded-xl bg-white p-2"
+            />
+          )}
+          <div className="min-w-0 space-y-2">
+            <p className="text-xs text-[var(--text-secondary)]">{t('security.scanHint')}</p>
+            <p className="font-mono text-xs text-[var(--accent-green)]">{ticket.code}</p>
+            <a
+              href={ticket.qr_uri}
+              className="block break-all font-mono text-xs text-[var(--accent-blue)] underline"
+            >
+              {ticket.qr_uri}
+            </a>
+            <button
+              type="button"
+              onClick={() => void handleCopy()}
+              className="loom-elevated inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-xs text-[var(--text-primary)] focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)]"
+            >
+              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied ? t('action.copied') : t('action.copyLink')}
+            </button>
+          </div>
         </section>
       )}
 
@@ -121,34 +169,45 @@ export function SecurityView({
         </div>
 
         {totpSetup && (
-          <div className="mt-3 space-y-3">
-            <p className="font-mono text-xs text-[var(--accent-green)]">{totpSetup.secret_base32}</p>
-            <p className="break-all font-mono text-xs text-[var(--text-secondary)]">
-              {totpSetup.otpauth_uri}
-            </p>
-            <form onSubmit={(e) => void handleVerifyTotp(e)} className="flex flex-wrap gap-2">
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={8}
-                value={totpCode}
-                onChange={(e) => setTotpCode(e.target.value)}
-                placeholder={t('security.totpCodePlaceholder')}
-                aria-label={t('security.totpCodePlaceholder')}
-                className="loom-elevated min-h-11 rounded-xl px-3 font-mono text-xs text-[var(--text-primary)] focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)]"
+          <div className="mt-3 flex flex-col items-start gap-4 sm:flex-row">
+            {totpSetup.qr_svg && (
+              <img
+                src={qrDataUri(totpSetup.qr_svg)}
+                alt={t('security.totpQrAlt')}
+                className="h-44 w-44 shrink-0 rounded-xl bg-white p-2"
               />
-              <button
-                type="submit"
-                className="inline-flex min-h-11 items-center rounded-xl bg-[var(--accent-blue)] px-4 text-xs font-medium text-white focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)]"
-              >
-                {t('action.verifyTotp')}
-              </button>
-            </form>
-            {totpError && (
-              <p role="alert" className="text-xs text-[var(--accent-red)]">
-                {t('security.totpInvalid')}
-              </p>
             )}
+            <div className="min-w-0 space-y-3">
+              <p className="font-mono text-xs text-[var(--accent-green)]">
+                {totpSetup.secret_base32}
+              </p>
+              <p className="break-all font-mono text-xs text-[var(--text-secondary)]">
+                {totpSetup.otpauth_uri}
+              </p>
+              <form onSubmit={(e) => void handleVerifyTotp(e)} className="flex flex-wrap gap-2">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={8}
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value)}
+                  placeholder={t('security.totpCodePlaceholder')}
+                  aria-label={t('security.totpCodePlaceholder')}
+                  className="loom-elevated min-h-11 rounded-xl px-3 font-mono text-xs text-[var(--text-primary)] focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)]"
+                />
+                <button
+                  type="submit"
+                  className="inline-flex min-h-11 items-center rounded-xl bg-[var(--accent-blue)] px-4 text-xs font-medium text-white focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)]"
+                >
+                  {t('action.verifyTotp')}
+                </button>
+              </form>
+              {totpError && (
+                <p role="alert" className="text-xs text-[var(--accent-red)]">
+                  {t('security.totpInvalid')}
+                </p>
+              )}
+            </div>
           </div>
         )}
       </section>

@@ -1,6 +1,8 @@
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use chrono::{DateTime, Duration, Utc};
+use qrcode::QrCode;
+use qrcode::render::svg;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -13,6 +15,7 @@ use uuid::Uuid;
 pub struct PairingTicket {
     pub code: String,
     pub qr_uri: String,
+    pub qr_svg: String,
     pub expires_at: String,
 }
 
@@ -34,8 +37,21 @@ pub struct ExchangeResult {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TotpSetup {
     pub otpauth_uri: String,
+    pub qr_svg: String,
     pub secret_base32: String,
     pub enrolled: bool,
+}
+
+pub fn render_qr_svg(content: &str) -> String {
+    let Ok(code) = QrCode::new(content.as_bytes()) else {
+        return String::new();
+    };
+    code.render()
+        .min_dimensions(220, 220)
+        .quiet_zone(true)
+        .dark_color(svg::Color("#0a0a0a"))
+        .light_color(svg::Color("#ffffff"))
+        .build()
 }
 
 #[derive(Debug, Clone)]
@@ -96,6 +112,7 @@ impl AuthManager {
 
         PairingTicket {
             code,
+            qr_svg: render_qr_svg(&qr_uri),
             qr_uri,
             expires_at: exp.to_rfc3339(),
         }
@@ -192,8 +209,12 @@ impl AuthManager {
         *self.totp_secret.write().await = Some(secret);
         *self.totp_enrolled.write().await = false;
 
+        let otpauth_uri = totp.get_url();
+        let qr_svg = render_qr_svg(&otpauth_uri);
+
         Ok(TotpSetup {
-            otpauth_uri: totp.get_url(),
+            otpauth_uri,
+            qr_svg,
             secret_base32: totp.get_secret_base32(),
             enrolled: false,
         })
@@ -346,8 +367,12 @@ mod tests {
 
         let setup = mgr.setup_totp("norman@loom.local").await.unwrap();
         assert!(setup.otpauth_uri.starts_with("otpauth://totp/"));
+        assert!(setup.qr_svg.contains("<svg"));
         assert!(!setup.secret_base32.is_empty());
         assert!(!mgr.verify_and_enable_totp("000000").await);
+
+        let ticket = mgr.create_pairing("https://loom.trycloudflare.com").await;
+        assert!(ticket.qr_svg.contains("<svg"));
 
         let totp = TOTP::from_url(&setup.otpauth_uri).unwrap();
         let valid_code = totp.generate_current().unwrap();
