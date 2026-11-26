@@ -5,7 +5,7 @@ import { OfflineCanvas } from './components/OfflineCanvas'
 import { Sidebar, type NavTab } from './components/Sidebar'
 import { TopBar } from './components/TopBar'
 import { useLoomState } from './hooks/useLoomState'
-import { I18nProvider } from './i18n'
+import { I18nProvider, useI18n } from './i18n'
 import { ConnectorsView } from './views/ConnectorsView'
 import { KnowledgeView } from './views/KnowledgeView'
 import { MissionsView } from './views/MissionsView'
@@ -13,6 +13,7 @@ import { SecurityView } from './views/SecurityView'
 import { TelemetryView } from './views/TelemetryView'
 
 function LoomShell() {
+  const { t } = useI18n()
   const [tab, setTab] = useState<NavTab>('missions')
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const loom = useLoomState()
@@ -53,6 +54,34 @@ function LoomShell() {
 
         <LiveIsland event={loom.liveEvent} />
 
+        {loom.pairingNotice && (
+          <div
+            role="status"
+            className="mx-auto mt-3 flex w-full max-w-5xl items-center justify-between gap-3 px-4 sm:px-6"
+          >
+            <div
+              className={`flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-2.5 text-xs ${
+                loom.pairingNotice === 'ok'
+                  ? 'border-[var(--accent-green)] bg-[var(--accent-green-soft)] text-[var(--accent-green)]'
+                  : 'border-[var(--accent-red)] bg-[var(--accent-red-soft)] text-[var(--accent-red)]'
+              }`}
+            >
+              <span>
+                {loom.pairingNotice === 'ok'
+                  ? `${t('security.pairedBanner')} ${loom.pairedDevice?.label ?? ''}`
+                  : t('security.pairFailedBanner')}
+              </span>
+              <button
+                type="button"
+                onClick={loom.dismissPairingNotice}
+                className="min-h-11 rounded-lg px-3 font-medium focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)]"
+              >
+                {t('action.dismiss')}
+              </button>
+            </div>
+          </div>
+        )}
+
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-5 sm:px-6">
           {tab === 'missions' && (
             <MissionsView missions={loom.missions} onCreateMission={loom.createMission} />
@@ -69,6 +98,7 @@ function LoomShell() {
           {tab === 'security' && (
             <SecurityView
               devices={loom.devices}
+              network={loom.network}
               totpStatus={loom.totpStatus}
               onCreatePairing={loom.createPairing}
               onRevokeDevice={loom.revokeDevice}

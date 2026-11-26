@@ -22,6 +22,7 @@ clap.workspace = true
 futures-util.workspace = true
 loom-core.workspace = true
 loom-drivers.workspace = true
+qrcode.workspace = true
 rand.workspace = true
 reqwest.workspace = true
 serde.workspace = true

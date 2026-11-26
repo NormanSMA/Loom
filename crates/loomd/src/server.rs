@@ -41,6 +41,7 @@ pub struct AppState {
     pub events_tx: broadcast::Sender<LiveEvent>,
     pub http: reqwest::Client,
     pub exchange_dir: PathBuf,
+    pub public_url: Option<String>,
 }
 
 impl AppState {
@@ -62,6 +63,7 @@ impl AppState {
             events_tx,
             http,
             exchange_dir: default_exchange_dir(),
+            public_url: None,
         }
     }
 }
@@ -69,6 +71,7 @@ impl AppState {
 pub fn build_router(state: AppState, static_dir: Option<PathBuf>) -> Router {
     let api = Router::new()
         .route("/api/health", get(health))
+        .route("/api/network", get(network_info))
         .route("/api/doctor", get(doctor))
         .route("/api/providers", get(providers))
         .route("/api/skills", get(skills))
@@ -386,29 +389,77 @@ async fn claudehub(State(state): State<AppState>) -> Json<ClaudeHubBridge> {
     })
 }
 
+#[derive(Debug, Serialize)]
+struct NetworkInfo {
+    local_url: String,
+    public_url: Option<String>,
+    lan_ip: Option<String>,
+    remote_enabled: bool,
+}
+
+fn detect_lan_ipv4() -> Option<String> {
+    let sock = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+    sock.connect("8.8.8.8:80").ok()?;
+    match sock.local_addr().ok()?.ip() {
+        std::net::IpAddr::V4(ip) if !ip.is_loopback() => Some(ip.to_string()),
+        _ => None,
+    }
+}
+
+async fn network_info(State(state): State<AppState>) -> Json<NetworkInfo> {
+    let port = if state.demo {
+        state.config.demo_port
+    } else {
+        state.config.port
+    };
+    let local_url = format!("http://{}:{port}", state.config.bind);
+    let lan_ip = detect_lan_ipv4();
+    let public_url = state.public_url.clone().or_else(|| {
+        if state.config.remote_enabled {
+            lan_ip.as_ref().map(|ip| format!("http://{ip}:{port}"))
+        } else {
+            None
+        }
+    });
+    Json(NetworkInfo {
+        local_url,
+        public_url,
+        lan_ip,
+        remote_enabled: state.config.remote_enabled,
+    })
+}
+
 #[derive(Debug, Default, Deserialize)]
 struct PairReq {
     base_url: Option<String>,
+    ttl_secs: Option<i64>,
 }
 
 async fn auth_pair(
     State(state): State<AppState>,
     body: Option<Json<PairReq>>,
 ) -> Json<PairingTicket> {
-    let default_url = format!(
-        "http://{}:{}",
-        state.config.bind,
-        if state.demo {
-            state.config.demo_port
-        } else {
-            state.config.port
-        }
-    );
-    let base = body
-        .and_then(|b| b.0.base_url)
-        .filter(|s| !s.trim().is_empty())
+    let default_url = state.public_url.clone().unwrap_or_else(|| {
+        format!(
+            "http://{}:{}",
+            state.config.bind,
+            if state.demo {
+                state.config.demo_port
+            } else {
+                state.config.port
+            }
+        )
+    });
+    let (req_base, ttl_secs) = match body {
+        Some(Json(req)) => (req.base_url, req.ttl_secs),
+        None => (None, None),
+    };
+    let base = req_base
+        .map(|s| s.trim().trim_end_matches('/').to_string())
+        .filter(|s| !s.is_empty())
         .unwrap_or(default_url);
-    Json(state.auth.create_pairing(&base).await)
+    let ttl = chrono::Duration::seconds(ttl_secs.unwrap_or(120).clamp(30, 600));
+    Json(state.auth.create_pairing_with_ttl(&base, ttl).await)
 }
 
 #[derive(Debug, Deserialize)]
@@ -630,7 +681,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(pair_resp.status(), StatusCode::OK);
-        let pair_bytes = axum::body::to_bytes(pair_resp.into_body(), 4096)
+        let pair_bytes = axum::body::to_bytes(pair_resp.into_body(), 65536)
             .await
             .unwrap();
         let ticket: PairingTicket = serde_json::from_slice(&pair_bytes).unwrap();
@@ -747,7 +798,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(setup_resp.status(), StatusCode::OK);
-        let setup_bytes = axum::body::to_bytes(setup_resp.into_body(), 4096)
+        let setup_bytes = axum::body::to_bytes(setup_resp.into_body(), 65536)
             .await
             .unwrap();
         let setup: TotpSetup = serde_json::from_slice(&setup_bytes).unwrap();
@@ -784,5 +835,61 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(ok_verify.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn reports_network_info_and_generates_public_qr_pair() {
+        let cfg = LoomConfig {
+            remote_enabled: true,
+            ..Default::default()
+        };
+        let mut state = AppState::new(cfg, false);
+        state.public_url = Some("https://loom-demo.trycloudflare.com".into());
+        let app = build_router(state, None);
+
+        let net_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/network")
+                    .header("host", "loom-demo.trycloudflare.com")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(net_resp.status(), StatusCode::OK);
+        let net_bytes = axum::body::to_bytes(net_resp.into_body(), 4096)
+            .await
+            .unwrap();
+        let net: Value = serde_json::from_slice(&net_bytes).unwrap();
+        assert_eq!(
+            net.get("public_url").and_then(Value::as_str),
+            Some("https://loom-demo.trycloudflare.com")
+        );
+
+        let pair_resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/auth/pair")
+                    .header("host", "127.0.0.1:4320")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"ttl_secs":600}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(pair_resp.status(), StatusCode::OK);
+        let pair_bytes = axum::body::to_bytes(pair_resp.into_body(), 65536)
+            .await
+            .unwrap();
+        let ticket: PairingTicket = serde_json::from_slice(&pair_bytes).unwrap();
+        assert!(
+            ticket
+                .qr_uri
+                .starts_with("https://loom-demo.trycloudflare.com/?pair=lm_")
+        );
+        assert!(ticket.qr_svg.contains("<svg"));
     }
 }

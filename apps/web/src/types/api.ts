@@ -114,7 +114,15 @@ export interface ClaudeHubBridge {
 export interface PairingTicket {
   code: string
   qr_uri: string
+  qr_svg: string
   expires_at: string
+}
+
+export interface NetworkInfo {
+  local_url: string
+  public_url: string | null
+  lan_ip: string | null
+  remote_enabled: boolean
 }
 
 export interface TotpStatus {
@@ -125,6 +133,7 @@ export interface TotpStatus {
 
 export interface TotpSetup {
   otpauth_uri: string
+  qr_svg: string
   secret_base32: string
   enrolled: boolean
 }

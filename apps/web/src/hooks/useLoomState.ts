@@ -7,6 +7,7 @@ import type {
   HealthInfo,
   LiveEvent,
   MissionView,
+  NetworkInfo,
   PairingTicket,
   ProviderManifest,
   SkillEntry,
@@ -16,6 +17,15 @@ import type {
 } from '../types/api'
 
 const SNAPSHOT_KEY = 'loom.offline.snapshot.v1'
+const SESSION_KEY = 'loom.session.v1'
+
+function detectDeviceLabel(): string {
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+  if (/iPhone/i.test(ua)) return 'iPhone'
+  if (/iPad/i.test(ua)) return 'iPad'
+  if (/Android/i.test(ua)) return 'Android'
+  return 'Escritorio'
+}
 
 function loadCached(): CachedSnapshot | null {
   try {
@@ -55,6 +65,9 @@ export function useLoomState() {
   const [telemetry, setTelemetry] = useState<TelemetrySnapshot | null>(initial?.telemetry ?? null)
   const [claudehub, setClaudehub] = useState<ClaudeHubBridge | null>(initial?.claudehub ?? null)
   const [devices, setDevices] = useState<DeviceView[]>([])
+  const [network, setNetwork] = useState<NetworkInfo | null>(null)
+  const [pairedDevice, setPairedDevice] = useState<DeviceView | null>(null)
+  const [pairingNotice, setPairingNotice] = useState<'ok' | 'error' | null>(null)
   const [totpStatus, setTotpStatus] = useState<TotpStatus>({
     enrolled: false,
     remote_enabled: false,
@@ -65,7 +78,7 @@ export function useLoomState() {
 
   const refresh = useCallback(async () => {
     try {
-      const [h, d, p, s, m, tel, ch, dev, totp] = await Promise.all([
+      const [h, d, p, s, m, tel, ch, dev, totp, net] = await Promise.all([
         fetchJson<HealthInfo>('/api/health'),
         fetchJson<DoctorReport>('/api/doctor'),
         fetchJson<ProviderManifest[]>('/api/providers'),
@@ -75,6 +88,7 @@ export function useLoomState() {
         fetchJson<ClaudeHubBridge>('/api/claudehub'),
         fetchJson<DeviceView[]>('/api/devices'),
         fetchJson<Partial<TotpStatus>>('/api/auth/totp/status').catch((): Partial<TotpStatus> => ({})),
+        fetchJson<Partial<NetworkInfo>>('/api/network').catch((): Partial<NetworkInfo> => ({})),
       ])
       const now = new Date().toISOString()
       setHealth(h)
@@ -85,6 +99,14 @@ export function useLoomState() {
       setTelemetry(tel)
       setClaudehub(ch)
       setDevices(dev)
+      if (typeof net?.local_url === 'string') {
+        setNetwork({
+          local_url: net.local_url,
+          public_url: net.public_url ?? null,
+          lan_ip: net.lan_ip ?? null,
+          remote_enabled: Boolean(net.remote_enabled),
+        })
+      }
       if (typeof totp?.enrolled === 'boolean') {
         setTotpStatus({
           enrolled: totp.enrolled,
@@ -104,6 +126,43 @@ export function useLoomState() {
     void refresh()
     const timer = window.setInterval(() => void refresh(), 25_000)
     return () => window.clearInterval(timer)
+  }, [refresh])
+
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get('pair')?.trim()
+    if (!code) return
+    let active = true
+    const runExchange = async () => {
+      try {
+        const res = await fetchJson<{ device: DeviceView; session_token: string }>('/api/auth/exchange', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ code, label: detectDeviceLabel() }),
+        })
+        if (!active) return
+        try {
+          window.localStorage.setItem(
+            SESSION_KEY,
+            JSON.stringify({ token: res.session_token, device: res.device }),
+          )
+        } catch {
+          /* ignore storage unavailability */
+        }
+        setPairedDevice(res.device)
+        setPairingNotice('ok')
+        void refresh()
+      } catch {
+        if (active) setPairingNotice('error')
+      } finally {
+        if (active) {
+          window.history.replaceState({}, '', window.location.pathname)
+        }
+      }
+    }
+    void runExchange()
+    return () => {
+      active = false
+    }
   }, [refresh])
 
   useEffect(() => {
@@ -142,11 +201,11 @@ export function useLoomState() {
     setMissions((prev) => [created, ...prev])
   }
 
-  const createPairing = () =>
+  const createPairing = (baseUrl?: string) =>
     fetchJson<PairingTicket>('/api/auth/pair', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ base_url: window.location.origin }),
+      body: JSON.stringify({ base_url: baseUrl ?? network?.public_url ?? window.location.origin }),
     })
 
   const revokeDevice = async (id: string) => {
@@ -184,6 +243,10 @@ export function useLoomState() {
     telemetry,
     claudehub,
     devices,
+    network,
+    pairedDevice,
+    pairingNotice,
+    dismissPairingNotice: () => setPairingNotice(null),
     totpStatus,
     liveEvent,
     lastSync,
