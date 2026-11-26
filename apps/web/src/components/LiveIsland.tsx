@@ -14,25 +14,25 @@ export function LiveIsland({ event }: LiveIslandProps) {
 
   const state = event?.state ?? 'idle'
   const stateLabel = t(`status.${state}`)
-  const target = event?.target ?? 'loomd · 127.0.0.1:4320'
+  const target = event?.target ?? t('status.nodeReady')
   const detail = event?.detail ?? t('status.online')
   const provider = event?.provider_id ?? 'loom'
 
   return (
-    <div className="flex justify-center px-3 pt-2">
+    <div className="flex justify-center px-3 pt-2.5">
       <button
         type="button"
         onClick={() => setExpanded((prev) => !prev)}
         aria-expanded={expanded}
-        className="loom-glass-island min-h-11 rounded-2xl px-4 py-2 text-left transition-transform duration-150 active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)]"
+        className="loom-glass-island min-h-11 max-w-full rounded-2xl px-3.5 py-2 text-left transition-transform duration-150 active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)] sm:px-4"
       >
         <div className="flex items-center gap-3">
           <AgentGlyph state={state} size="sm" />
           <div className="min-w-0">
-            <p className="truncate text-xs font-mono text-[var(--text-secondary)]">
+            <p className="truncate font-mono text-[11px] text-[var(--text-secondary)]">
               {target}
             </p>
-            <p className="truncate text-sm font-medium text-[var(--text-primary)]">
+            <p className="truncate text-xs font-medium text-[var(--text-primary)] sm:text-sm">
               {stateLabel} · <span className="text-[var(--accent-blue)]">{provider}</span>
             </p>
           </div>

@@ -64,7 +64,7 @@ describe('Loom UI shell', () => {
           cachedMissions={[
             {
               id: 'm1',
-              title: 'Mision cacheada',
+              title: 'Misión cacheada',
               mode: 'direct',
               effort: 'normal',
               sensitivity: 'internal',
@@ -83,8 +83,8 @@ describe('Loom UI shell', () => {
       </I18nProvider>,
     )
 
-    expect(screen.getByText('Mision cacheada')).toBeTruthy()
-    fireEvent.click(screen.getByText('Reintentar conexion'))
+    expect(screen.getByText('Misión cacheada')).toBeTruthy()
+    fireEvent.click(screen.getByText('Reintentar conexión'))
     expect(onRetry).toHaveBeenCalledTimes(1)
   })
 })

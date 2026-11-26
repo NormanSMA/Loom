@@ -18,14 +18,20 @@ export function LedBarCard({ label, value, fillRatio, tone, hint }: LedBarCardPr
         : 'bg-[var(--accent-blue)]'
 
   return (
-    <article className="loom-card rounded-2xl p-4 transition-transform duration-150 hover:-translate-y-0.5">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-xs uppercase tracking-wider text-[var(--text-muted)]">
+    <article className="loom-card min-w-0 rounded-2xl p-3.5 transition-transform duration-150 hover:-translate-y-0.5 sm:p-4">
+      <div className="flex min-w-0 items-baseline justify-between gap-1.5">
+        <span className="truncate text-[11px] uppercase tracking-wider text-[var(--text-muted)] sm:text-xs">
           {label}
         </span>
-        {hint && <span className="font-mono text-xs text-[var(--text-secondary)]">{hint}</span>}
+        {hint && (
+          <span className="hidden truncate font-mono text-[10px] text-[var(--text-secondary)] sm:inline">
+            {hint}
+          </span>
+        )}
       </div>
-      <p className="mt-1 font-mono text-2xl font-semibold text-[var(--text-primary)]">{value}</p>
+      <p className="mt-1 truncate font-mono text-xl font-semibold text-[var(--text-primary)] sm:text-2xl">
+        {value}
+      </p>
       <div className="mt-3 grid grid-cols-10 gap-1" aria-hidden="true">
         {SEGMENTS.map((idx) => (
           <span

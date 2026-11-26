@@ -8,4 +8,5 @@ pub mod providers;
 pub mod router;
 pub mod skills;
 pub mod types;
+pub mod workspaces;
 pub mod worktree;
