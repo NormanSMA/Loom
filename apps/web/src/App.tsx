@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { LazyMotion, domAnimation } from 'motion/react'
-import { LiveIsland } from './components/LiveIsland'
 import { OfflineCanvas } from './components/OfflineCanvas'
 import { Sidebar, type NavTab } from './components/Sidebar'
 import { TopBar } from './components/TopBar'
@@ -10,17 +9,48 @@ import { ConnectorsView } from './views/ConnectorsView'
 import { KnowledgeView } from './views/KnowledgeView'
 import { MissionsView } from './views/MissionsView'
 import { SecurityView } from './views/SecurityView'
+import { SettingsView, type UserProfile } from './views/SettingsView'
 import { TelemetryView } from './views/TelemetryView'
+
+const DEFAULT_PROFILE: UserProfile = {
+  name: 'NormanSMA',
+  role: 'Arquitecto / Orquestador',
+  defaultSensitivity: 'internal',
+}
+
+function loadProfile(): UserProfile {
+  try {
+    const raw = window.localStorage.getItem('loom.profile')
+    if (!raw) return DEFAULT_PROFILE
+    const parsed = JSON.parse(raw) as Partial<UserProfile>
+    return {
+      name: typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name : DEFAULT_PROFILE.name,
+      role: typeof parsed.role === 'string' && parsed.role.trim() ? parsed.role : DEFAULT_PROFILE.role,
+      defaultSensitivity: parsed.defaultSensitivity === 'confidential' ? 'confidential' : 'internal',
+    }
+  } catch {
+    return DEFAULT_PROFILE
+  }
+}
 
 function LoomShell() {
   const { t } = useI18n()
   const [tab, setTab] = useState<NavTab>('missions')
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
+  const [profile, setProfile] = useState<UserProfile>(loadProfile)
   const loom = useLoomState()
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('loom.profile', JSON.stringify(profile))
+    } catch {
+      /* ignore storage errors */
+    }
+  }, [profile])
 
   if (loom.isOffline) {
     return (
@@ -42,17 +72,16 @@ function LoomShell() {
         activeTab={tab}
         onSelect={setTab}
         onNewMission={() => setTab('missions')}
+        profileName={profile.name}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar
           demo={loom.health?.demo ?? false}
-          theme={theme}
-          onToggleTheme={() => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))}
+          remoteEnabled={loom.totpStatus.remote_enabled}
+          onOpenSettings={() => setTab('settings')}
           onEmergencyStop={loom.emergencyStop}
         />
-
-        <LiveIsland event={loom.liveEvent} />
 
         {loom.pairingNotice && (
           <div
@@ -89,6 +118,8 @@ function LoomShell() {
               workspaces={loom.workspaces}
               generatedImage={loom.generatedImage}
               imageError={loom.imageError}
+              defaultSensitivity={profile.defaultSensitivity}
+              liveEvent={loom.liveEvent}
               onDismissImage={loom.dismissGeneratedImage}
               onCreateMission={loom.createMission}
               onFetchDiff={loom.fetchMissionDiff}
@@ -115,6 +146,14 @@ function LoomShell() {
               onSetupTotp={loom.setupTotp}
               onVerifyTotp={loom.verifyTotp}
               onSimulateOffline={() => loom.setSimulatedOffline(true)}
+            />
+          )}
+          {tab === 'settings' && (
+            <SettingsView
+              theme={theme}
+              onChangeTheme={setTheme}
+              profile={profile}
+              onChangeProfile={setProfile}
             />
           )}
         </main>

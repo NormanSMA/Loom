@@ -17,7 +17,7 @@ Rust daemon, MCP server, isolated Git worktrees, mobile PWA, and native bridge w
 
 <br />
 
-<img src="docs/loom-states.svg" alt="Animated live agent states in Loom" width="760" />
+<img src="docs/loom-states-en.svg" alt="Animated live agent states in Loom" width="760" />
 
 </div>
 

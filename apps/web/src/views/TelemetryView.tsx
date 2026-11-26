@@ -1,10 +1,59 @@
-import { useI18n } from '../i18n'
+import { useI18n, type LocaleCode } from '../i18n'
 import type { TelemetrySnapshot } from '../types/api'
 import { DotHeatmap } from '../components/DotHeatmap'
+import { DotMatrixEqualizer, DotMatrixSparkline } from '../components/DotMatrixWidgets'
 import { LedBarCard } from '../components/LedBarCard'
 
 interface TelemetryViewProps {
   telemetry: TelemetrySnapshot | null
+}
+
+interface TelemetryMatrixCopy {
+  equalizerTitle: string
+  equalizerSubtitle: string
+  equalizerUnit: string
+  sparklineTitle: string
+  sparklineSubtitle: string
+  avgPerDay: string
+  peakDay: string
+  activeDays: string
+  totalCalls: string
+}
+
+const TELEMETRY_MATRIX_COPY: Record<LocaleCode, TelemetryMatrixCopy> = {
+  es: {
+    equalizerTitle: 'Pulso de los últimos 14 días',
+    equalizerSubtitle: 'Selecciona o enfoca una columna para ver el día',
+    equalizerUnit: 'regs',
+    sparklineTitle: 'Curva diaria y registros',
+    sparklineSubtitle: 'Tendencia reciente de actividad y uso por proveedor',
+    avgPerDay: 'Promedio/día',
+    peakDay: 'Pico máximo',
+    activeDays: 'Días activos',
+    totalCalls: 'Total regs',
+  },
+  en: {
+    equalizerTitle: '14-day activity pulse',
+    equalizerSubtitle: 'Select or focus a column to inspect the day',
+    equalizerUnit: 'calls',
+    sparklineTitle: 'Daily curve and calls',
+    sparklineSubtitle: 'Recent activity trend and provider call totals',
+    avgPerDay: 'Avg / day',
+    peakDay: 'Peak day',
+    activeDays: 'Active days',
+    totalCalls: 'Total calls',
+  },
+  'pt-BR': {
+    equalizerTitle: 'Pulso dos últimos 14 dias',
+    equalizerSubtitle: 'Selecione ou foque uma coluna para ver o dia',
+    equalizerUnit: 'regs',
+    sparklineTitle: 'Curva diária e registros',
+    sparklineSubtitle: 'Tendência recente de atividade e uso por provedor',
+    avgPerDay: 'Média/dia',
+    peakDay: 'Pico máximo',
+    activeDays: 'Dias ativos',
+    totalCalls: 'Total regs',
+  },
 }
 
 function formatCompactTokens(n: number): string {
@@ -15,16 +64,19 @@ function formatCompactTokens(n: number): string {
 }
 
 export function TelemetryView({ telemetry }: TelemetryViewProps) {
-  const { t } = useI18n()
+  const { locale, t } = useI18n()
   if (!telemetry) return null
 
+  const copy = TELEMETRY_MATRIX_COPY[locale]
   const tokenRatio =
     telemetry.total_tokens <= 0
       ? 0
       : Math.min(1, Math.log10(telemetry.total_tokens + 1) / 10)
 
+  const totalProviderCalls = telemetry.by_provider.reduce((sum, row) => sum + row.calls, 0)
+
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 space-y-5">
       <div>
         <h1 className="text-xl font-semibold text-[var(--text-primary)]">
           {t('telemetry.title')}
@@ -60,10 +112,31 @@ export function TelemetryView({ telemetry }: TelemetryViewProps) {
         />
       </div>
 
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <DotMatrixEqualizer
+          points={telemetry.heatmap}
+          title={copy.equalizerTitle}
+          subtitle={copy.equalizerSubtitle}
+          unitLabel={copy.equalizerUnit}
+        />
+        <DotMatrixSparkline
+          points={telemetry.heatmap}
+          title={copy.sparklineTitle}
+          subtitle={copy.sparklineSubtitle}
+          totalOverride={totalProviderCalls > 0 ? totalProviderCalls : undefined}
+          labels={{
+            avgPerDay: copy.avgPerDay,
+            peakDay: copy.peakDay,
+            activeDays: copy.activeDays,
+            totalCalls: copy.totalCalls,
+          }}
+        />
+      </div>
+
       <DotHeatmap points={telemetry.heatmap} title={t('telemetry.heatmap')} />
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <section className="loom-card overflow-x-auto rounded-2xl p-4">
+        <section className="loom-card min-w-0 overflow-x-auto rounded-2xl p-4">
           {telemetry.by_provider.length === 0 ? (
             <p className="text-xs text-[var(--text-muted)]">{t('telemetry.emptyProviders')}</p>
           ) : (
@@ -96,7 +169,7 @@ export function TelemetryView({ telemetry }: TelemetryViewProps) {
           )}
         </section>
 
-        <section className="loom-card rounded-2xl p-4">
+        <section className="loom-card min-w-0 rounded-2xl p-4">
           <h2 className="mb-3 text-sm font-medium text-[var(--text-primary)]">
             {t('telemetry.logs')}
           </h2>
@@ -105,9 +178,9 @@ export function TelemetryView({ telemetry }: TelemetryViewProps) {
           ) : (
             <div className="space-y-2">
               {telemetry.logs.map((log, i) => (
-                <div key={`${log.ts}-${i}`} className="loom-elevated rounded-xl px-3 py-2 text-xs">
+                <div key={`${log.ts}-${i}`} className="loom-elevated min-w-0 rounded-xl px-3 py-2 text-xs">
                   <span className="font-mono text-[var(--accent-blue)]">[{log.provider_id}] </span>
-                  <span className="text-[var(--text-secondary)]">{log.message}</span>
+                  <span className="break-words text-[var(--text-secondary)]">{log.message}</span>
                 </div>
               ))}
             </div>

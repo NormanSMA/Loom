@@ -11,7 +11,7 @@ test.describe('Loom UI E2E', () => {
     await page.goto('/')
     await expect(page.getByRole('heading', { name: 'Centro de misiones' })).toBeVisible()
 
-    // Check zero horizontal overflow across all 5 tabs
+    // Check zero horizontal overflow across all tabs + Settings
     for (const tabLabel of ['Conectores', 'Telemetría', 'Memoria', 'Seguridad', 'Misiones']) {
       await page.locator('button:visible', { hasText: tabLabel }).first().click()
       const fits = await page.evaluate(
@@ -20,8 +20,15 @@ test.describe('Loom UI E2E', () => {
       expect(fits, `overflow on tab ${tabLabel}`).toBe(true)
     }
 
-    // Select detected workspace chip and inspect mission diff + approve
-    await page.locator('button:visible', { hasText: 'Loom' }).first().click()
+    await page.getByRole('button', { name: 'Ajustes y perfil' }).click()
+    const settingsFits = await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+    )
+    expect(settingsFits, 'overflow on tab Ajustes').toBe(true)
+    await page.locator('button:visible', { hasText: 'Misiones' }).first().click()
+
+    // Select detected glass folder card and inspect mission diff + approve
+    await page.locator('main button:visible', { hasText: 'Loom' }).first().click()
     await page.getByRole('button', { name: 'Ver diff y artefactos' }).first().click()
     await page.getByRole('button', { name: 'Aprobar' }).click()
     await expect(page.getByText('Aprobada').first()).toBeVisible()
@@ -33,12 +40,13 @@ test.describe('Loom UI E2E', () => {
     await page.getByRole('button', { name: 'Despachar' }).click()
     await expect(page.getByAltText('Vista previa generada')).toBeVisible()
 
-    // Language and theme toggles
+    // Navigate to Ajustes for language, profile and theme toggles
+    await page.getByRole('button', { name: 'Ajustes y perfil' }).click()
     const lang = page.getByLabel('language')
     await lang.selectOption('en')
-    await expect(page.getByRole('heading', { name: 'Mission control' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Settings & profile' })).toBeVisible()
     await lang.selectOption('es')
-    await expect(page.getByRole('heading', { name: 'Centro de misiones' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Ajustes y perfil' })).toBeVisible()
 
     await page.getByRole('button', { name: 'Claro' }).click()
     await expect
@@ -75,7 +83,7 @@ test.describe('Loom UI E2E', () => {
     await expect.poll(() => page.url()).not.toContain('?pair=')
 
     await page.locator('button:visible', { hasText: 'Seguridad' }).first().click()
-    await expect(page.getByText('Activo').first()).toBeVisible()
+    await expect(page.locator('main').getByText('Activo', { exact: true }).first()).toBeVisible()
 
     await page.locator('button:visible', { hasText: 'Misiones' }).first().click()
     await expect(page.getByRole('heading', { name: 'Centro de misiones' })).toBeVisible()

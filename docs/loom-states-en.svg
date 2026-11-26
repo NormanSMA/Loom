@@ -1,0 +1,185 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 112" width="100%" role="img" aria-label="Loom live agent states">
+  <defs>
+    <style>
+      .g-cell {
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: cellPulse 1.6s ease-in-out infinite;
+      }
+      .gc-1 { animation-delay: 0s; }
+      .gc-2 { animation-delay: 0.16s; }
+      .gc-3 { animation-delay: 0.32s; }
+      .gc-4 { animation-delay: 0.48s; }
+      .gc-5 { animation-delay: 0.64s; }
+      .gc-6 { animation-delay: 0.80s; }
+      .gc-7 { animation-delay: 0.96s; }
+      .gc-8 { animation-delay: 1.12s; }
+      .gc-9 { animation-delay: 1.28s; }
+
+      .tri-glow {
+        animation: glowPulse 2.2s ease-in-out infinite;
+      }
+      .tri-trace {
+        stroke-dasharray: 28 34;
+        animation: triTrace 2.2s linear infinite;
+      }
+      .tri-v {
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: vertexPulse 1.8s ease-in-out infinite;
+      }
+      .tv-1 { animation-delay: 0s; }
+      .tv-2 { animation-delay: 0.6s; }
+      .tv-3 { animation-delay: 1.2s; }
+
+      .ring-spin {
+        transform-origin: 15px 15px;
+        animation: glitchRing 3.6s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+      }
+      .r-node {
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: nodeGlitch 1.4s steps(2, end) infinite;
+      }
+      .rn-1 { animation-delay: 0s; }
+      .rn-2 { animation-delay: 0.18s; }
+      .rn-3 { animation-delay: 0.36s; }
+      .rn-4 { animation-delay: 0.54s; }
+      .rn-5 { animation-delay: 0.72s; }
+      .rn-6 { animation-delay: 0.90s; }
+      .rn-7 { animation-delay: 1.08s; }
+      .rn-8 { animation-delay: 1.26s; }
+
+      .d-cell {
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: diagCascade 1.7s ease-in-out infinite;
+      }
+      .dw-1 { animation-delay: 0s; }
+      .dw-2 { animation-delay: 0.18s; }
+      .dw-3 { animation-delay: 0.36s; }
+      .dw-4 { animation-delay: 0.54s; }
+      .dw-5 { animation-delay: 0.72s; }
+
+      .label-text {
+        animation: textShimmer 2.8s ease-in-out infinite;
+      }
+      .lt-1 { animation-delay: 0s; }
+      .lt-2 { animation-delay: 0.35s; }
+      .lt-3 { animation-delay: 0.70s; }
+      .lt-4 { animation-delay: 1.05s; }
+
+      @keyframes cellPulse {
+        0%, 100% { opacity: 0.32; transform: scale(0.84); }
+        50% { opacity: 1; transform: scale(1.06); }
+      }
+      @keyframes glowPulse {
+        0%, 100% { stroke-opacity: 0.18; }
+        50% { stroke-opacity: 0.45; }
+      }
+      @keyframes triTrace {
+        from { stroke-dashoffset: 62; }
+        to { stroke-dashoffset: 0; }
+      }
+      @keyframes vertexPulse {
+        0%, 100% { opacity: 0.55; transform: scale(0.85); }
+        50% { opacity: 1; transform: scale(1.25); }
+      }
+      @keyframes glitchRing {
+        0% { transform: rotate(0deg); }
+        22% { transform: rotate(45deg) translate(0.6px, -0.4px); }
+        25% { transform: rotate(42deg) translate(-0.8px, 0.5px); }
+        50% { transform: rotate(90deg) translate(0px, 0px); }
+        72% { transform: rotate(45deg) translate(0.5px, 0.5px); }
+        75% { transform: rotate(48deg) translate(-0.6px, -0.4px); }
+        100% { transform: rotate(0deg); }
+      }
+      @keyframes nodeGlitch {
+        0%, 100% { opacity: 0.45; transform: scale(0.9); }
+        50% { opacity: 1; transform: scale(1.08); }
+      }
+      @keyframes diagCascade {
+        0%, 100% { opacity: 0.28; transform: scale(0.86); }
+        45% { opacity: 1; transform: scale(1.08); }
+      }
+      @keyframes textShimmer {
+        0%, 100% { opacity: 0.80; }
+        50% { opacity: 1; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .g-cell, .tri-glow, .tri-trace, .tri-v, .ring-spin, .r-node, .d-cell, .label-text {
+          animation: none !important;
+          opacity: 1 !important;
+          transform: none !important;
+          stroke-dashoffset: 0 !important;
+        }
+      }
+    </style>
+  </defs>
+
+  <rect width="880" height="112" rx="16" fill="#0A0A0A" stroke="#262626" />
+
+  <g transform="translate(20, 20)">
+    <rect width="196" height="72" rx="14" fill="#121212" stroke="#262626" />
+    <g transform="translate(20, 22)">
+      <rect class="g-cell gc-1" x="0" y="0" width="7" height="7" rx="1.5" fill="#22C55E" />
+      <rect class="g-cell gc-2" x="10" y="0" width="7" height="7" rx="1.5" fill="#22C55E" />
+      <rect class="g-cell gc-3" x="20" y="0" width="7" height="7" rx="1.5" fill="#22C55E" />
+      <rect class="g-cell gc-4" x="0" y="10" width="7" height="7" rx="1.5" fill="#22C55E" />
+      <rect class="g-cell gc-5" x="10" y="10" width="7" height="7" rx="1.5" fill="#166534" />
+      <rect class="g-cell gc-6" x="20" y="10" width="7" height="7" rx="1.5" fill="#22C55E" />
+      <rect class="g-cell gc-7" x="0" y="20" width="7" height="7" rx="1.5" fill="#22C55E" />
+      <rect class="g-cell gc-8" x="10" y="20" width="7" height="7" rx="1.5" fill="#22C55E" />
+      <rect class="g-cell gc-9" x="20" y="20" width="7" height="7" rx="1.5" fill="#22C55E" />
+    </g>
+    <text class="label-text lt-1" x="120" y="41" text-anchor="middle" fill="#FAFAFA" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="600">Thinking</text>
+  </g>
+
+  <g transform="translate(234, 20)">
+    <rect width="196" height="72" rx="14" fill="#121212" stroke="#262626" />
+    <g transform="translate(18, 20)">
+      <polygon class="tri-glow" points="6,6 25,14 10,27" fill="none" stroke="#EF4444" stroke-opacity="0.24" stroke-width="4" stroke-linejoin="round" />
+      <polygon points="6,6 25,14 10,27" fill="none" stroke="#EF4444" stroke-opacity="0.28" stroke-width="1.5" stroke-linejoin="round" />
+      <polygon class="tri-trace" points="6,6 25,14 10,27" fill="none" stroke="#EF4444" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+      <circle class="tri-v tv-1" cx="6" cy="6" r="3" fill="#EF4444" />
+      <circle class="tri-v tv-2" cx="25" cy="14" r="3" fill="#EF4444" />
+      <circle class="tri-v tv-3" cx="10" cy="27" r="3" fill="#EF4444" />
+    </g>
+    <text class="label-text lt-2" x="120" y="41" text-anchor="middle" fill="#FAFAFA" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="600">Reading Docs</text>
+  </g>
+
+  <g transform="translate(448, 20)">
+    <rect width="196" height="72" rx="14" fill="#121212" stroke="#262626" />
+    <g transform="translate(19, 21)">
+      <g class="ring-spin">
+        <rect class="r-node rn-1" x="7" y="0" width="6" height="6" rx="1.2" fill="#60A5FA" />
+        <rect class="r-node rn-2" x="17" y="0" width="6" height="6" rx="1.2" fill="#E0F2FE" />
+        <rect class="r-node rn-3" x="24" y="7" width="6" height="6" rx="1.2" fill="#3B82F6" />
+        <rect class="r-node rn-4" x="24" y="17" width="6" height="6" rx="1.2" fill="#60A5FA" />
+        <rect class="r-node rn-5" x="17" y="24" width="6" height="6" rx="1.2" fill="#E0F2FE" />
+        <rect class="r-node rn-6" x="7" y="24" width="6" height="6" rx="1.2" fill="#3B82F6" />
+        <rect class="r-node rn-7" x="0" y="17" width="6" height="6" rx="1.2" fill="#60A5FA" />
+        <rect class="r-node rn-8" x="0" y="7" width="6" height="6" rx="1.2" fill="#3B82F6" />
+      </g>
+    </g>
+    <text class="label-text lt-3" x="120" y="41" text-anchor="middle" fill="#FAFAFA" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="600">Analysing</text>
+  </g>
+
+  <g transform="translate(662, 20)">
+    <rect width="198" height="72" rx="14" fill="#121212" stroke="#3B82F6" />
+    <g transform="translate(20, 22)">
+      <rect class="d-cell dw-1" x="21" y="0" width="6" height="6" rx="1.2" fill="#93C5FD" />
+      <rect class="d-cell dw-2" x="14" y="0" width="6" height="6" rx="1.2" fill="#60A5FA" />
+      <rect class="d-cell dw-2" x="21" y="7" width="6" height="6" rx="1.2" fill="#60A5FA" />
+      <rect class="d-cell dw-3" x="7" y="7" width="6" height="6" rx="1.2" fill="#3B82F6" />
+      <rect class="d-cell dw-3" x="14" y="7" width="6" height="6" rx="1.2" fill="#93C5FD" />
+      <rect class="d-cell dw-4" x="0" y="14" width="6" height="6" rx="1.2" fill="#3B82F6" />
+      <rect class="d-cell dw-4" x="7" y="14" width="6" height="6" rx="1.2" fill="#60A5FA" />
+      <rect class="d-cell dw-4" x="14" y="14" width="6" height="6" rx="1.2" fill="#3B82F6" />
+      <rect class="d-cell dw-5" x="0" y="21" width="6" height="6" rx="1.2" fill="#93C5FD" />
+      <rect class="d-cell dw-5" x="7" y="21" width="6" height="6" rx="1.2" fill="#60A5FA" />
+    </g>
+    <text class="label-text lt-4" x="121" y="41" text-anchor="middle" fill="#FAFAFA" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="600">Debugging</text>
+  </g>
+</svg>

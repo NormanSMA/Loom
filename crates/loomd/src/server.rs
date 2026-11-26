@@ -24,7 +24,8 @@ use loom_core::router::{TaskRole, read_claudehub_quota, route_task};
 use loom_core::skills::SkillIndex;
 use loom_core::types::Sensitivity;
 use loom_core::workspaces::{
-    ActiveChatView, WorkspaceInfo, discover_local_workspaces, normalize_workspace_key,
+    ActiveChatView, WorkspaceInfo, dedup_active_chats, discover_local_workspaces,
+    normalize_workspace_key,
 };
 use loom_drivers::doctor::run_doctor;
 use loom_drivers::image_gen::{ImageBackend, ImageGenRequest, generate_image};
@@ -440,9 +441,14 @@ async fn workspaces(State(state): State<AppState>) -> Json<Vec<WorkspaceInfo>> {
             if !cwd_path.is_dir() {
                 continue;
             }
+            let source = s.get("source").and_then(Value::as_str).unwrap_or("claude");
             let last_ts = s.get("last").and_then(Value::as_i64).unwrap_or(0);
-            ensure_workspace(&mut list, &mut index, cwd_path, "claude", last_ts);
+            ensure_workspace(&mut list, &mut index, cwd_path, source, last_ts);
         }
+    }
+
+    for ws in &mut list {
+        dedup_active_chats(&mut ws.active_chats);
     }
 
     list.sort_by(|a, b| {
