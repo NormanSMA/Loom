@@ -1,4 +1,5 @@
-/target
+target/
+apps/desktop/src-tauri/gen/
 *.db
 *.db-wal
 *.db-shm

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { LazyMotion, domAnimation } from 'motion/react'
+import { DesktopIslandSurface } from './components/DesktopIslandSurface'
 import { OfflineCanvas } from './components/OfflineCanvas'
 import { Sidebar, type NavTab } from './components/Sidebar'
 import { TopBar } from './components/TopBar'
@@ -163,10 +164,22 @@ function LoomShell() {
 }
 
 export function App() {
+  const isIslandSurface =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('surface') === 'island'
+
+  useEffect(() => {
+    if (!isIslandSurface) return
+    document.documentElement.classList.add('island-surface')
+    return () => {
+      document.documentElement.classList.remove('island-surface')
+    }
+  }, [isIslandSurface])
+
   return (
     <I18nProvider>
       <LazyMotion features={domAnimation}>
-        <LoomShell />
+        {isIslandSurface ? <DesktopIslandSurface /> : <LoomShell />}
       </LazyMotion>
     </I18nProvider>
   )

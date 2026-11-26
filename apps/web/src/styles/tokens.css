@@ -26,6 +26,7 @@
   --aura-opacity-rest: 0.16;
   --aura-opacity-hover: 0.3;
   --aura-opacity-focus: 0.56;
+  --notch-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
 }
 
 [data-theme="light"] {
@@ -54,6 +55,7 @@
   --aura-opacity-rest: 0.1;
   --aura-opacity-hover: 0.2;
   --aura-opacity-focus: 0.36;
+  --notch-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
 }
 
 * {
@@ -68,6 +70,34 @@ body {
   color: var(--text-primary);
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+html.island-surface,
+html.island-surface body {
+  background: transparent !important;
+  overflow: hidden;
+}
+
+[data-tauri-drag-region] {
+  -webkit-app-region: drag;
+}
+
+[data-tauri-drag-region] button,
+[data-tauri-drag-region] a,
+[data-tauri-drag-region] input,
+[data-tauri-drag-region] select,
+.notch-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+.notch-shell {
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-top-width: 0;
+  border-radius: 0 0 1.25rem 1.25rem;
+  box-shadow: var(--notch-shadow), inset 0 1px 0 var(--border-glass-edge);
+  color: var(--text-primary);
+  transition: box-shadow 180ms ease, border-color 180ms ease;
 }
 
 .loom-card {
@@ -382,7 +412,8 @@ body {
   }
 
   .omnibox-glow::before,
-  .omnibox-aura::after {
+  .omnibox-aura::after,
+  .notch-shell {
     transition: none;
   }
 }

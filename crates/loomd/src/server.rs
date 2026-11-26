@@ -35,7 +35,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{Mutex, RwLock, broadcast, oneshot};
+use tokio::sync::{RwLock, broadcast, watch};
 use tower_http::services::{ServeDir, ServeFile};
 use uuid::Uuid;
 
@@ -48,7 +48,7 @@ pub struct AppState {
     pub missions: Arc<RwLock<Vec<MissionView>>>,
     pub logs: Arc<RwLock<Vec<TelemetryLog>>>,
     pub artifacts: Arc<RwLock<HashMap<String, Vec<ArtifactPreview>>>>,
-    pub active_cancels: Arc<Mutex<Vec<oneshot::Sender<()>>>>,
+    pub active_cancels: Arc<RwLock<HashMap<String, watch::Sender<bool>>>>,
     pub events_tx: broadcast::Sender<LiveEvent>,
     pub http: reqwest::Client,
     pub exchange_dir: PathBuf,
@@ -88,7 +88,7 @@ impl AppState {
             missions: Arc::new(RwLock::new(initial_missions)),
             logs: Arc::new(RwLock::new(Vec::new())),
             artifacts: Arc::new(RwLock::new(initial_artifacts)),
-            active_cancels: Arc::new(Mutex::new(Vec::new())),
+            active_cancels: Arc::new(RwLock::new(HashMap::new())),
             events_tx,
             http,
             exchange_dir: default_exchange_dir(),
@@ -320,6 +320,7 @@ async fn create_mission(
         };
         let _ = append_loom_run(&state.exchange_dir, &run_record);
     }
+    let repo_root = req.repo_root.clone();
     let mission = MissionView {
         id: id.clone(),
         title: title.to_string(),
@@ -336,6 +337,13 @@ async fn create_mission(
     };
 
     state.missions.write().await.insert(0, mission.clone());
+    let (cancel_tx, cancel_rx) = watch::channel(false);
+    state
+        .active_cancels
+        .write()
+        .await
+        .insert(id.clone(), cancel_tx);
+
     push_log(
         &state.logs,
         TelemetryLog {
@@ -349,13 +357,303 @@ async fn create_mission(
     let _ = state.events_tx.send(LiveEvent {
         kind: "mission_created".into(),
         state: AgentActivityState::Thinking,
-        provider_id: routed,
-        target: id,
+        provider_id: routed.clone(),
+        target: id.clone(),
         detail: title.to_string(),
         ts: now,
     });
 
+    tokio::spawn(run_mission_lifecycle(MissionLifecycleArgs {
+        missions: Arc::clone(&state.missions),
+        logs: Arc::clone(&state.logs),
+        events_tx: state.events_tx.clone(),
+        active_cancels: Arc::clone(&state.active_cancels),
+        demo: state.demo,
+        id,
+        title: title.to_string(),
+        repo_root,
+        provider_id: routed,
+        cancel_rx,
+    }));
+
     (StatusCode::CREATED, Json(mission)).into_response()
+}
+
+struct MissionLifecycleArgs {
+    missions: Arc<RwLock<Vec<MissionView>>>,
+    logs: Arc<RwLock<Vec<TelemetryLog>>>,
+    events_tx: broadcast::Sender<LiveEvent>,
+    active_cancels: Arc<RwLock<HashMap<String, watch::Sender<bool>>>>,
+    demo: bool,
+    id: String,
+    title: String,
+    repo_root: Option<String>,
+    provider_id: String,
+    cancel_rx: watch::Receiver<bool>,
+}
+
+async fn update_mission_status(
+    missions: &RwLock<Vec<MissionView>>,
+    id: &str,
+    status: &str,
+    activity: AgentActivityState,
+    gate_passed: Option<bool>,
+    allow_if_cancelled: bool,
+) -> bool {
+    let now = Utc::now().to_rfc3339();
+    let mut guard = missions.write().await;
+    let Some(m) = guard.iter_mut().find(|m| m.id == id) else {
+        return false;
+    };
+    if !allow_if_cancelled && m.status == "cancelled" {
+        return false;
+    }
+    m.status = status.into();
+    m.state = activity;
+    if gate_passed.is_some() {
+        m.gate_passed = gate_passed;
+    }
+    m.updated_at = now;
+    true
+}
+
+async fn wait_or_cancel(cancel_rx: &mut watch::Receiver<bool>, dur: Duration) -> bool {
+    if *cancel_rx.borrow() {
+        return true;
+    }
+    tokio::select! {
+        _ = tokio::time::sleep(dur) => *cancel_rx.borrow(),
+        res = cancel_rx.changed() => res.is_err() || *cancel_rx.borrow(),
+    }
+}
+
+async fn cancel_mission(args: &MissionLifecycleArgs) {
+    let now = Utc::now().to_rfc3339();
+    update_mission_status(
+        &args.missions,
+        &args.id,
+        "cancelled",
+        AgentActivityState::Idle,
+        None,
+        true,
+    )
+    .await;
+    push_log(
+        &args.logs,
+        TelemetryLog {
+            ts: now.clone(),
+            provider_id: args.provider_id.clone(),
+            level: "warn".into(),
+            message: format!("Misión cancelada: {}", args.title),
+        },
+    )
+    .await;
+    let _ = args.events_tx.send(LiveEvent {
+        kind: "mission_cancelled".into(),
+        state: AgentActivityState::Idle,
+        provider_id: args.provider_id.clone(),
+        target: args.id.clone(),
+        detail: format!("Cancelada: {}", args.title),
+        ts: now,
+    });
+    args.active_cancels.write().await.remove(&args.id);
+}
+
+fn inspect_workspace(repo_root: Option<&str>, title: &str) -> String {
+    let dir = repo_root
+        .filter(|p| std::path::Path::new(p).is_dir())
+        .unwrap_or(".");
+    let (diff_summary, _) = read_git_diff(dir);
+    let changed_count = std::process::Command::new("git")
+        .args(["-C", dir, "status", "--short"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .count()
+        })
+        .unwrap_or(0);
+    format!(
+        "Inspección de {dir} para '{title}': {diff_summary} ({changed_count} rutas modificadas)"
+    )
+}
+
+async fn run_mission_lifecycle(mut args: MissionLifecycleArgs) {
+    let target_label = args
+        .repo_root
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or("cápsula local")
+        .to_string();
+
+    if !update_mission_status(
+        &args.missions,
+        &args.id,
+        "running",
+        AgentActivityState::Reading,
+        None,
+        false,
+    )
+    .await
+    {
+        cancel_mission(&args).await;
+        return;
+    }
+
+    let now = Utc::now().to_rfc3339();
+    let reading_detail = format!("Leyendo workspace: {target_label}");
+    push_log(
+        &args.logs,
+        TelemetryLog {
+            ts: now.clone(),
+            provider_id: args.provider_id.clone(),
+            level: "info".into(),
+            message: reading_detail.clone(),
+        },
+    )
+    .await;
+    let _ = args.events_tx.send(LiveEvent {
+        kind: "mission_state".into(),
+        state: AgentActivityState::Reading,
+        provider_id: args.provider_id.clone(),
+        target: args.id.clone(),
+        detail: reading_detail,
+        ts: now,
+    });
+
+    if wait_or_cancel(&mut args.cancel_rx, Duration::from_millis(150)).await {
+        cancel_mission(&args).await;
+        return;
+    }
+
+    if !update_mission_status(
+        &args.missions,
+        &args.id,
+        "running",
+        AgentActivityState::Thinking,
+        None,
+        false,
+    )
+    .await
+    {
+        cancel_mission(&args).await;
+        return;
+    }
+
+    let _ = args.events_tx.send(LiveEvent {
+        kind: "mission_state".into(),
+        state: AgentActivityState::Thinking,
+        provider_id: args.provider_id.clone(),
+        target: args.id.clone(),
+        detail: format!("Planificando: {}", args.title),
+        ts: Utc::now().to_rfc3339(),
+    });
+
+    let analysis_summary = if args.demo {
+        if wait_or_cancel(&mut args.cancel_rx, Duration::from_millis(450)).await {
+            cancel_mission(&args).await;
+            return;
+        }
+        format!("Análisis completado (demo): {}", args.title)
+    } else {
+        let repo_opt = args.repo_root.clone();
+        let title_clone = args.title.clone();
+        let handle = tokio::task::spawn_blocking(move || {
+            inspect_workspace(repo_opt.as_deref(), &title_clone)
+        });
+        tokio::select! {
+            res = handle => {
+                if *args.cancel_rx.borrow() {
+                    cancel_mission(&args).await;
+                    return;
+                }
+                res.unwrap_or_else(|_| format!("Inspección finalizada: {}", args.title))
+            }
+            _ = args.cancel_rx.changed() => {
+                cancel_mission(&args).await;
+                return;
+            }
+        }
+    };
+
+    if !update_mission_status(
+        &args.missions,
+        &args.id,
+        "running",
+        AgentActivityState::Analysing,
+        None,
+        false,
+    )
+    .await
+    {
+        cancel_mission(&args).await;
+        return;
+    }
+
+    let now = Utc::now().to_rfc3339();
+    push_log(
+        &args.logs,
+        TelemetryLog {
+            ts: now.clone(),
+            provider_id: args.provider_id.clone(),
+            level: "info".into(),
+            message: analysis_summary.clone(),
+        },
+    )
+    .await;
+    let _ = args.events_tx.send(LiveEvent {
+        kind: "mission_state".into(),
+        state: AgentActivityState::Analysing,
+        provider_id: args.provider_id.clone(),
+        target: args.id.clone(),
+        detail: analysis_summary,
+        ts: now,
+    });
+
+    if wait_or_cancel(&mut args.cancel_rx, Duration::from_millis(250)).await {
+        cancel_mission(&args).await;
+        return;
+    }
+
+    if *args.cancel_rx.borrow()
+        || !update_mission_status(
+            &args.missions,
+            &args.id,
+            "completed",
+            AgentActivityState::Idle,
+            Some(true),
+            false,
+        )
+        .await
+    {
+        cancel_mission(&args).await;
+        return;
+    }
+
+    let now = Utc::now().to_rfc3339();
+    let done_msg = format!("Misión completada: {}", args.title);
+    push_log(
+        &args.logs,
+        TelemetryLog {
+            ts: now.clone(),
+            provider_id: args.provider_id.clone(),
+            level: "info".into(),
+            message: done_msg.clone(),
+        },
+    )
+    .await;
+    let _ = args.events_tx.send(LiveEvent {
+        kind: "mission_completed".into(),
+        state: AgentActivityState::Idle,
+        provider_id: args.provider_id,
+        target: args.id.clone(),
+        detail: done_msg,
+        ts: now,
+    });
+    args.active_cancels.write().await.remove(&args.id);
 }
 
 async fn push_log(logs: &RwLock<Vec<TelemetryLog>>, entry: TelemetryLog) {
@@ -1091,25 +1389,51 @@ struct StopResp {
 }
 
 async fn emergency_stop(State(state): State<AppState>) -> Json<StopResp> {
-    let senders: Vec<_> = {
-        let mut guard = state.active_cancels.lock().await;
+    let senders: HashMap<String, watch::Sender<bool>> = {
+        let mut guard = state.active_cancels.write().await;
         std::mem::take(&mut *guard)
     };
     let mut stopped = 0;
-    for tx in senders {
-        if tx.send(()).is_ok() {
+    for (_id, tx) in senders {
+        if tx.send(true).is_ok() {
             stopped += 1;
         }
     }
+    let now = Utc::now().to_rfc3339();
+    let mut cancelled_missions = 0;
+    {
+        let mut guard = state.missions.write().await;
+        for m in guard.iter_mut() {
+            if m.status == "queued" || m.status == "running" {
+                m.status = "cancelled".into();
+                m.state = AgentActivityState::Idle;
+                m.updated_at = now.clone();
+                cancelled_missions += 1;
+            }
+        }
+    }
+    let total_stopped = stopped.max(cancelled_missions);
+    push_log(
+        &state.logs,
+        TelemetryLog {
+            ts: now.clone(),
+            provider_id: "loomd".into(),
+            level: "warn".into(),
+            message: format!("Parada total ejecutada: {total_stopped} procesos detenidos"),
+        },
+    )
+    .await;
     let _ = state.events_tx.send(LiveEvent {
         kind: "emergency_stop".into(),
         state: AgentActivityState::Idle,
         provider_id: "loomd".into(),
         target: "all".into(),
-        detail: format!("Detenidos {stopped} procesos activos"),
-        ts: Utc::now().to_rfc3339(),
+        detail: format!("Detenidos {total_stopped} procesos activos"),
+        ts: now,
     });
-    Json(StopResp { stopped })
+    Json(StopResp {
+        stopped: total_stopped,
+    })
 }
 
 async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
@@ -1214,8 +1538,12 @@ mod tests {
     #[tokio::test]
     async fn handles_pairing_device_revocation_and_emergency_stop() {
         let (app, state) = test_app();
-        let (tx, rx) = oneshot::channel();
-        state.active_cancels.lock().await.push(tx);
+        let (tx, mut rx) = watch::channel(false);
+        state
+            .active_cancels
+            .write()
+            .await
+            .insert("msn-manual".into(), tx);
 
         let pair_resp = app
             .clone()
@@ -1282,7 +1610,8 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(stop_resp.status(), StatusCode::OK);
-        assert!(rx.await.is_ok());
+        assert!(rx.changed().await.is_ok());
+        assert!(*rx.borrow());
     }
 
     #[tokio::test]
@@ -1540,5 +1869,129 @@ mod tests {
             .unwrap();
         let arts: Vec<ArtifactPreview> = serde_json::from_slice(&art_bytes).unwrap();
         assert_eq!(arts.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn executes_mission_lifecycle_and_cancels_on_emergency_stop() {
+        let (app, state) = test_app();
+        let mut events_rx = state.events_tx.subscribe();
+
+        let create_ok = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/missions")
+                    .header("host", "127.0.0.1:4321")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"title":"Ciclo completo","mode":"direct","sensitivity":"internal"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(create_ok.status(), StatusCode::CREATED);
+        let created_bytes = axum::body::to_bytes(create_ok.into_body(), 8192)
+            .await
+            .unwrap();
+        let created_mission: MissionView = serde_json::from_slice(&created_bytes).unwrap();
+
+        let completed = tokio::time::timeout(Duration::from_secs(4), async {
+            loop {
+                match events_rx.recv().await {
+                    Ok(ev) if ev.target == created_mission.id && ev.kind == "mission_completed" => {
+                        return true;
+                    }
+                    Ok(_) => continue,
+                    Err(_) => return false,
+                }
+            }
+        })
+        .await
+        .expect("timeout esperando mission_completed");
+        assert!(completed);
+
+        {
+            let missions = state.missions.read().await;
+            let done = missions
+                .iter()
+                .find(|m| m.id == created_mission.id)
+                .unwrap();
+            assert_eq!(done.status, "completed");
+            assert_eq!(done.state, AgentActivityState::Idle);
+            assert_eq!(done.gate_passed, Some(true));
+        }
+        assert!(
+            !state
+                .active_cancels
+                .read()
+                .await
+                .contains_key(&created_mission.id)
+        );
+
+        let create_cancel = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/missions")
+                    .header("host", "127.0.0.1:4321")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"title":"Misión interrumpible","mode":"direct","sensitivity":"internal"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(create_cancel.status(), StatusCode::CREATED);
+        let cancel_bytes = axum::body::to_bytes(create_cancel.into_body(), 8192)
+            .await
+            .unwrap();
+        let cancel_mission_view: MissionView = serde_json::from_slice(&cancel_bytes).unwrap();
+
+        let started_running = tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                match events_rx.recv().await {
+                    Ok(ev) if ev.target == cancel_mission_view.id && ev.kind == "mission_state" => {
+                        return true;
+                    }
+                    Ok(_) => continue,
+                    Err(_) => return false,
+                }
+            }
+        })
+        .await
+        .expect("timeout esperando mission_state");
+        assert!(started_running);
+
+        let stop_resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/emergency-stop")
+                    .header("host", "127.0.0.1:4321")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(stop_resp.status(), StatusCode::OK);
+        let stop_bytes = axum::body::to_bytes(stop_resp.into_body(), 4096)
+            .await
+            .unwrap();
+        let stop_val: Value = serde_json::from_slice(&stop_bytes).unwrap();
+        assert!(stop_val.get("stopped").and_then(Value::as_u64).unwrap_or(0) >= 1);
+
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        let missions = state.missions.read().await;
+        let cancelled = missions
+            .iter()
+            .find(|m| m.id == cancel_mission_view.id)
+            .unwrap();
+        assert_eq!(cancelled.status, "cancelled");
+        assert_eq!(cancelled.state, AgentActivityState::Idle);
+        assert!(state.active_cancels.read().await.is_empty());
     }
 }

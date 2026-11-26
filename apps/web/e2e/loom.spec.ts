@@ -90,4 +90,29 @@ test.describe('Loom UI E2E', () => {
 
     expect(errors).toEqual([])
   })
+
+  test('superficie de isla nativa (?surface=island) sin errores', async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', (err) => errors.push(err.message))
+    page.on('console', (msg) => {
+      if (msg.type() === 'error') errors.push(msg.text())
+    })
+
+    await page.goto('/?surface=island')
+
+    const notch = page
+      .locator('button.notch-shell')
+      .filter({ hasText: /En espera|Pensando|Leyendo|Analizando|Depurando|Creando/ })
+    await expect(notch).toBeVisible()
+    await expect(notch).toHaveAttribute('aria-expanded', 'false')
+
+    await notch.click()
+    await expect(notch).toHaveAttribute('aria-expanded', 'true')
+    await expect(notch.locator('p').nth(1)).toBeVisible()
+
+    await notch.click()
+    await expect(notch).toHaveAttribute('aria-expanded', 'false')
+
+    expect(errors).toEqual([])
+  })
 })
