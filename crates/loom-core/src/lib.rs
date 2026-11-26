@@ -2,6 +2,7 @@ pub mod artifacts;
 pub mod capsule;
 pub mod config;
 pub mod db;
+pub mod exchange;
 pub mod gates;
 pub mod providers;
 pub mod router;

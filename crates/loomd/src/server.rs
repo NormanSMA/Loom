@@ -13,6 +13,7 @@ use axum::{Json, Router};
 use chrono::Utc;
 use loom_core::capsule::{CapsuleRequest, compile_capsule};
 use loom_core::config::{LoomConfig, default_providers_dir};
+use loom_core::exchange::{LoomRunRecord, append_loom_run, default_exchange_dir};
 use loom_core::providers::ProviderRegistry;
 use loom_core::router::{TaskRole, read_claudehub_quota, route_task};
 use loom_core::skills::SkillIndex;
@@ -37,6 +38,7 @@ pub struct AppState {
     pub active_cancels: Arc<Mutex<Vec<oneshot::Sender<()>>>>,
     pub events_tx: broadcast::Sender<LiveEvent>,
     pub http: reqwest::Client,
+    pub exchange_dir: PathBuf,
 }
 
 impl AppState {
@@ -57,6 +59,7 @@ impl AppState {
             active_cancels: Arc::new(Mutex::new(Vec::new())),
             events_tx,
             http,
+            exchange_dir: default_exchange_dir(),
         }
     }
 }
@@ -247,7 +250,34 @@ async fn create_mission(
     }
 
     let id = format!("msn-{}", &Uuid::new_v4().simple().to_string()[..8]);
-    let now = Utc::now().to_rfc3339();
+    let now_dt = Utc::now();
+    let now = now_dt.to_rfc3339();
+    if !state.demo {
+        let project = req
+            .repo_root
+            .as_deref()
+            .and_then(|p| std::path::Path::new(p).file_name())
+            .and_then(|n| n.to_str())
+            .filter(|s| !s.is_empty())
+            .unwrap_or("loom")
+            .to_string();
+        let run_record = LoomRunRecord {
+            id: format!("loom:{id}"),
+            ts: now_dt.timestamp_millis(),
+            session: id.clone(),
+            project,
+            role: "orchestrator".into(),
+            agent: None,
+            model: routed.clone(),
+            provider: routed.clone(),
+            input: 0,
+            output: 0,
+            cache_read: 0,
+            cache_write: 0,
+            reasoning: None,
+        };
+        let _ = append_loom_run(&state.exchange_dir, &run_record);
+    }
     let mission = MissionView {
         id: id.clone(),
         title: title.to_string(),
@@ -608,5 +638,37 @@ mod tests {
             .unwrap();
         assert_eq!(stop_resp.status(), StatusCode::OK);
         assert!(rx.await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn emits_claudehub_exchange_record_in_real_mode() {
+        let dir = std::env::temp_dir().join(format!("loomd-ex-{}", Uuid::new_v4()));
+        let mut state = AppState::new(LoomConfig::default(), false);
+        state.exchange_dir = dir.clone();
+        let app = build_router(state, None);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/missions")
+                    .header("host", "127.0.0.1:4320")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"title":"Puente exchange","mode":"direct","sensitivity":"internal","repo_root":"C:/Proyectos/Loom"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let raw = std::fs::read_to_string(dir.join("loom-runs.jsonl")).unwrap();
+        let rec: LoomRunRecord = serde_json::from_str(raw.lines().next().unwrap()).unwrap();
+        assert_eq!(rec.project, "Loom");
+        assert_eq!(rec.role, "orchestrator");
+        assert!(rec.id.starts_with("loom:msn-"));
+        assert!(!raw.contains("Proyectos"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
