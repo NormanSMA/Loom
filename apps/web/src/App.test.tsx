@@ -50,9 +50,12 @@ describe('Loom UI shell', () => {
     render(<App />)
     await waitFor(() => expect(screen.getByText('Centro de misiones')).toBeTruthy())
 
+    const settingsBtn = screen.getByRole('button', { name: 'Ajustes y perfil' })
+    fireEvent.click(settingsBtn)
+
     const select = screen.getByLabelText('language')
     fireEvent.change(select, { target: { value: 'en' } })
-    expect(screen.getByText('Mission control')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Settings & profile' })).toBeTruthy()
   })
 
   it('renders interactive offline standby screen with cached missions', () => {

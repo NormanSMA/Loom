@@ -26,6 +26,115 @@ pub struct WorkspaceInfo {
     pub last_ts: i64,
 }
 
+fn is_placeholder_title(title: &str) -> bool {
+    let trimmed = title.trim();
+    trimmed.is_empty()
+        || trimmed.eq_ignore_ascii_case("sesión activa")
+        || trimmed.eq_ignore_ascii_case("sesion activa")
+}
+
+fn is_unknown_model(model: &str) -> bool {
+    let trimmed = model.trim();
+    trimmed.is_empty() || trimmed.eq_ignore_ascii_case("unknown")
+}
+
+fn merge_chat(target: &mut ActiveChatView, incoming: ActiveChatView) {
+    if target.source.trim().is_empty() && !incoming.source.trim().is_empty() {
+        target.source = incoming.source.trim().to_string();
+    }
+    if target.session.trim().is_empty() && !incoming.session.trim().is_empty() {
+        target.session = incoming.session.trim().to_string();
+    }
+
+    let target_title_placeholder = is_placeholder_title(&target.title);
+    let incoming_title = incoming.title.trim();
+    let incoming_title_placeholder = is_placeholder_title(incoming_title);
+    if (target_title_placeholder && !incoming_title_placeholder)
+        || (target.title.trim().is_empty() && !incoming_title.is_empty())
+        || (!target_title_placeholder
+            && !incoming_title_placeholder
+            && incoming_title.len() > target.title.trim().len())
+    {
+        target.title = incoming_title.to_string();
+    }
+
+    let incoming_model = incoming.model.trim();
+    if (is_unknown_model(&target.model) && !is_unknown_model(incoming_model))
+        || (target.model.trim().is_empty() && !incoming_model.is_empty())
+    {
+        target.model = incoming_model.to_string();
+    }
+
+    target.working = target.working || incoming.working;
+    if incoming.last_ts > target.last_ts {
+        target.last_ts = incoming.last_ts;
+    }
+}
+
+/// Colapsa entradas duplicadas por `(source, session)` o `(source, title)` normalizados y ordena por actividad.
+pub fn dedup_active_chats(chats: &mut Vec<ActiveChatView>) {
+    let input = std::mem::take(chats);
+    let mut merged: Vec<ActiveChatView> = Vec::with_capacity(input.len());
+    let mut by_session: HashMap<(String, String), usize> = HashMap::new();
+    let mut by_title: HashMap<(String, String), usize> = HashMap::new();
+
+    for mut chat in input {
+        chat.source = chat.source.trim().to_string();
+        chat.session = chat.session.trim().to_string();
+        chat.title = chat.title.trim().to_string();
+        chat.model = chat.model.trim().to_string();
+
+        let source_norm = chat.source.to_ascii_lowercase();
+        let session_norm = chat.session.clone();
+        let title_norm = chat.title.to_ascii_lowercase();
+
+        let existing_idx = if !session_norm.is_empty() {
+            by_session
+                .get(&(source_norm.clone(), session_norm.clone()))
+                .copied()
+        } else {
+            None
+        }
+        .or_else(|| {
+            if !title_norm.is_empty() {
+                by_title
+                    .get(&(source_norm.clone(), title_norm.clone()))
+                    .copied()
+            } else {
+                None
+            }
+        });
+
+        let idx = if let Some(idx) = existing_idx {
+            merge_chat(&mut merged[idx], chat);
+            idx
+        } else {
+            let idx = merged.len();
+            merged.push(chat);
+            idx
+        };
+
+        let entry = &merged[idx];
+        let entry_source = entry.source.to_ascii_lowercase();
+        if !entry.session.is_empty() {
+            by_session.insert((entry_source.clone(), entry.session.clone()), idx);
+        }
+        if !entry.title.is_empty() {
+            by_title.insert((entry_source, entry.title.to_ascii_lowercase()), idx);
+        }
+    }
+
+    merged.sort_by(|a, b| {
+        b.working
+            .cmp(&a.working)
+            .then_with(|| b.last_ts.cmp(&a.last_ts))
+            .then_with(|| a.title.to_lowercase().cmp(&b.title.to_lowercase()))
+            .then_with(|| a.title.cmp(&b.title))
+    });
+
+    *chats = merged;
+}
+
 /// Descubre proyectos y rutas activas desde Claude Code, Codex CLI y repositorios Git locales.
 /// Nunca extrae texto de prompts ni respuestas; solo lee metadatos `cwd` existentes en disco.
 pub fn discover_local_workspaces(extra_roots: &[PathBuf]) -> Vec<WorkspaceInfo> {
@@ -313,5 +422,69 @@ mod tests {
         assert_eq!(b.sources, vec!["codex".to_string()]);
 
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn dedups_active_chats_by_session_and_title() {
+        let mut chats = vec![
+            ActiveChatView {
+                source: "claude".into(),
+                session: "sess-1".into(),
+                title: "Sesión activa".into(),
+                model: "unknown".into(),
+                working: false,
+                last_ts: 100,
+            },
+            ActiveChatView {
+                source: "Claude".into(),
+                session: " sess-1 ".into(),
+                title: "Implementar deduplicación".into(),
+                model: "claude-sonnet-4-6".into(),
+                working: true,
+                last_ts: 250,
+            },
+            ActiveChatView {
+                source: "claude".into(),
+                session: String::new(),
+                title: "  implementar deduplicación  ".into(),
+                model: "unknown".into(),
+                working: false,
+                last_ts: 180,
+            },
+            ActiveChatView {
+                source: "codex".into(),
+                session: "codex-9".into(),
+                title: "Implementar deduplicación".into(),
+                model: "gpt-5.4".into(),
+                working: false,
+                last_ts: 300,
+            },
+            ActiveChatView {
+                source: "gemini".into(),
+                session: "gem-2".into(),
+                title: "Revisar SVG".into(),
+                model: "gemini-2.5-pro".into(),
+                working: true,
+                last_ts: 200,
+            },
+        ];
+
+        dedup_active_chats(&mut chats);
+
+        assert_eq!(chats.len(), 3);
+        assert_eq!(chats[0].source, "claude");
+        assert_eq!(chats[0].session, "sess-1");
+        assert_eq!(chats[0].title, "Implementar deduplicación");
+        assert_eq!(chats[0].model, "claude-sonnet-4-6");
+        assert!(chats[0].working);
+        assert_eq!(chats[0].last_ts, 250);
+
+        assert_eq!(chats[1].source, "gemini");
+        assert!(chats[1].working);
+        assert_eq!(chats[1].last_ts, 200);
+
+        assert_eq!(chats[2].source, "codex");
+        assert!(!chats[2].working);
+        assert_eq!(chats[2].last_ts, 300);
     }
 }

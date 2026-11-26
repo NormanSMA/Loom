@@ -5,8 +5,10 @@
   --bg-surface: #121212;
   --bg-elevated: #1a1a1a;
   --bg-glass: rgba(18, 18, 18, 0.84);
+  --bg-glass-folder: rgba(16, 18, 22, 0.78);
   --border-subtle: #262626;
   --border-strong: #3a3a3a;
+  --border-glass-edge: rgba(255, 255, 255, 0.09);
   --text-primary: #fafafa;
   --text-secondary: #a1a1aa;
   --text-muted: #71717a;
@@ -19,6 +21,11 @@
   --accent-amber: #f59e0b;
   --accent-amber-soft: rgba(245, 158, 11, 0.16);
   --dot-inactive: #222226;
+  --orb-core: rgba(34, 197, 94, 0.45);
+  --orb-halo: rgba(59, 130, 246, 0.34);
+  --aura-opacity-rest: 0.16;
+  --aura-opacity-hover: 0.3;
+  --aura-opacity-focus: 0.56;
 }
 
 [data-theme="light"] {
@@ -26,8 +33,10 @@
   --bg-surface: #f4f5f7;
   --bg-elevated: #ffffff;
   --bg-glass: rgba(255, 255, 255, 0.86);
+  --bg-glass-folder: rgba(248, 250, 252, 0.88);
   --border-subtle: #e2e4e9;
   --border-strong: #cbd0da;
+  --border-glass-edge: rgba(15, 23, 42, 0.08);
   --text-primary: #0a0a0a;
   --text-secondary: #4b5563;
   --text-muted: #6b7280;
@@ -40,6 +49,11 @@
   --accent-amber: #b45309;
   --accent-amber-soft: rgba(180, 83, 9, 0.12);
   --dot-inactive: #d4d7df;
+  --orb-core: rgba(21, 128, 61, 0.32);
+  --orb-halo: rgba(29, 78, 216, 0.24);
+  --aura-opacity-rest: 0.1;
+  --aura-opacity-hover: 0.2;
+  --aura-opacity-focus: 0.36;
 }
 
 * {
@@ -72,6 +86,13 @@ body {
   backdrop-filter: blur(14px);
 }
 
+.glass-folder {
+  background-color: var(--bg-glass-folder);
+  border: 1px solid var(--border-subtle);
+  box-shadow: inset 0 1px 0 var(--border-glass-edge);
+  backdrop-filter: blur(16px) saturate(1.2);
+}
+
 .loom-dot-bg {
   background-image: radial-gradient(var(--border-subtle) 1px, transparent 1px);
   background-size: 16px 16px;
@@ -80,59 +101,213 @@ body {
 @keyframes loom-pulse {
   0%,
   100% {
-    opacity: 0.35;
-    transform: scale(0.86);
+    opacity: 0.28;
+    transform: scale(0.78);
   }
   50% {
     opacity: 1;
-    transform: scale(1);
+    transform: scale(1.06);
   }
 }
 
 @keyframes loom-scan {
-  0% {
-    opacity: 0.25;
-    transform: translateX(-2px);
+  0%,
+  100% {
+    opacity: 0.24;
+    transform: translateX(-1.5px) scale(0.84);
   }
   50% {
     opacity: 1;
-    transform: translateX(2px);
-  }
-  100% {
-    opacity: 0.25;
-    transform: translateX(-2px);
+    transform: translateX(1.5px) scale(1.05);
   }
 }
 
 @keyframes loom-cascade {
   0%,
   100% {
-    opacity: 0.28;
-    transform: translateY(-1px);
+    opacity: 0.22;
+    transform: translate(-1px, -1px) scale(0.82);
+  }
+  45% {
+    opacity: 1;
+    transform: translate(1px, 1px) scale(1.08);
+  }
+}
+
+@keyframes loom-orbit {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  65% {
+    opacity: 0.6;
+    transform: scale(0.95);
+  }
+}
+
+@keyframes loom-orb-breathe {
+  0%,
+  100% {
+    opacity: 0.72;
+    transform: scale(0.92);
   }
   50% {
     opacity: 1;
-    transform: translateY(1px);
+    transform: scale(1.08);
+  }
+}
+
+@keyframes loom-orb-drift {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: translate(1px, -1px) scale(0.9);
+  }
+  50% {
+    opacity: 0.9;
+    transform: translate(-1px, 1px) scale(1.12);
+  }
+}
+
+@keyframes loom-shimmer {
+  0% {
+    background-position: 120% 0;
+  }
+  100% {
+    background-position: -120% 0;
+  }
+}
+
+@keyframes loom-signal-wave {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scaleY(0.55);
+  }
+  50% {
+    opacity: 1;
+    transform: scaleY(1);
   }
 }
 
 .glyph-pulse {
-  animation: loom-pulse 1.2s ease-in-out infinite;
+  animation: loom-pulse 1.15s ease-in-out infinite;
 }
 
 .glyph-scan {
-  animation: loom-scan 1.1s ease-in-out infinite;
+  animation: loom-scan 1.05s ease-in-out infinite;
 }
 
 .glyph-cascade {
-  animation: loom-cascade 1s ease-in-out infinite;
+  animation: loom-cascade 0.95s ease-in-out infinite;
 }
 
+.glyph-orbit {
+  animation: loom-orbit 1.3s ease-in-out infinite;
+}
+
+.glyph-delay-0 {
+  animation-delay: 0ms;
+}
+
+.glyph-delay-1 {
+  animation-delay: 90ms;
+}
+
+.glyph-delay-2 {
+  animation-delay: 180ms;
+}
+
+.glyph-delay-3 {
+  animation-delay: 270ms;
+}
+
+.glyph-delay-4 {
+  animation-delay: 360ms;
+}
+
+.glyph-delay-5 {
+  animation-delay: 450ms;
+}
+
+.glyph-delay-6 {
+  animation-delay: 540ms;
+}
+
+.glyph-delay-7 {
+  animation-delay: 630ms;
+}
+
+.glyph-delay-8 {
+  animation-delay: 720ms;
+}
+
+.glyph-paused,
 .glyph-paused * {
   animation-play-state: paused;
 }
 
-.omnibox-glow {
+.signal-bar {
+  transform-origin: bottom center;
+  animation: loom-signal-wave 1.4s ease-in-out infinite;
+}
+
+.signal-bar-1 {
+  animation-delay: 0ms;
+}
+
+.signal-bar-2 {
+  animation-delay: 160ms;
+}
+
+.signal-bar-3 {
+  animation-delay: 320ms;
+}
+
+.orb-thinking {
+  position: relative;
+  display: inline-block;
+  width: 0.95rem;
+  height: 0.95rem;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 35%, var(--accent-green), var(--orb-core) 65%, transparent 100%);
+  box-shadow: 0 0 10px var(--orb-core);
+  animation: loom-orb-breathe 1.8s ease-in-out infinite;
+}
+
+.orb-thinking::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 68% 68%, var(--accent-blue), var(--orb-halo) 60%, transparent 100%);
+  mix-blend-mode: screen;
+  animation: loom-orb-drift 2.2s ease-in-out infinite;
+}
+
+.shimmer-text {
+  background: linear-gradient(
+    90deg,
+    var(--text-secondary) 0%,
+    var(--text-primary) 42%,
+    var(--accent-blue) 50%,
+    var(--text-primary) 58%,
+    var(--text-secondary) 100%
+  );
+  background-size: 220% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: loom-shimmer 2.1s linear infinite;
+}
+
+.omnibox-glow,
+.omnibox-aura {
   position: relative;
 }
 
@@ -141,23 +316,73 @@ body {
   position: absolute;
   inset: -1px;
   border-radius: 1rem;
-  background: linear-gradient(90deg, var(--accent-blue), var(--accent-green));
-  opacity: 0.2;
+  background: linear-gradient(120deg, var(--accent-blue), var(--accent-green));
+  opacity: var(--aura-opacity-rest);
   pointer-events: none;
-  transition: opacity 200ms ease;
+  transition: opacity 220ms ease;
   z-index: 0;
 }
 
+.omnibox-glow:hover::before {
+  opacity: var(--aura-opacity-hover);
+}
+
 .omnibox-glow:focus-within::before {
+  opacity: var(--aura-opacity-focus);
+}
+
+.omnibox-aura::after {
+  content: "";
+  position: absolute;
+  inset: -10px -8px -12px;
+  border-radius: 1.5rem;
+  background:
+    radial-gradient(60% 80% at 22% 55%, var(--accent-green-soft), transparent 70%),
+    radial-gradient(60% 80% at 78% 45%, var(--accent-blue-soft), transparent 70%);
+  filter: blur(14px);
+  opacity: 0.45;
+  pointer-events: none;
+  transition: opacity 240ms ease, transform 240ms ease;
+  z-index: 0;
+}
+
+.omnibox-aura:hover::after {
   opacity: 0.72;
+}
+
+.omnibox-aura:focus-within::after {
+  opacity: 1;
+  transform: scale(1.01);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .glyph-pulse,
   .glyph-scan,
-  .glyph-cascade {
+  .glyph-cascade,
+  .glyph-orbit,
+  .signal-bar,
+  .orb-thinking,
+  .orb-thinking::after,
+  .shimmer-text {
     animation: none;
-    opacity: 0.85;
     transform: none;
+  }
+
+  .glyph-pulse,
+  .glyph-scan,
+  .glyph-cascade,
+  .glyph-orbit,
+  .signal-bar {
+    opacity: 0.85;
+  }
+
+  .shimmer-text {
+    background: none;
+    color: var(--text-primary);
+  }
+
+  .omnibox-glow::before,
+  .omnibox-aura::after {
+    transition: none;
   }
 }

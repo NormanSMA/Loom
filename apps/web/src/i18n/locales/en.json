@@ -6,6 +6,7 @@
   "nav.telemetry": "Telemetry",
   "nav.knowledge": "Memory",
   "nav.security": "Security",
+  "nav.settings": "Settings",
   "action.newMission": "New mission",
   "action.killSwitch": "Kill switch",
   "action.killShort": "Stop",

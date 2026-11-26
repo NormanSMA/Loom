@@ -6,6 +6,7 @@
   "nav.telemetry": "Telemetría",
   "nav.knowledge": "Memoria",
   "nav.security": "Seguridad",
+  "nav.settings": "Ajustes",
   "action.newMission": "Nueva misión",
   "action.killSwitch": "Parada total",
   "action.killShort": "Parar",

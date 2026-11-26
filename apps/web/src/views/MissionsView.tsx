@@ -5,11 +5,13 @@ import { useI18n } from '../i18n'
 import type {
   ArtifactPreview,
   GeneratedImageResp,
+  LiveEvent,
   MissionDiff,
   MissionView,
   WorkspaceInfo,
 } from '../types/api'
 import { AgentGlyph } from '../components/AgentGlyph'
+import { GlassFolderCard } from '../components/GlassFolderCard'
 import { Omnibox } from '../components/Omnibox'
 
 interface MissionsViewProps {
@@ -17,6 +19,8 @@ interface MissionsViewProps {
   workspaces?: WorkspaceInfo[]
   generatedImage?: GeneratedImageResp | null
   imageError?: string | null
+  defaultSensitivity?: 'internal' | 'confidential'
+  liveEvent?: LiveEvent | null
   onDismissImage?: () => void
   onCreateMission: (payload: {
     title: string
@@ -56,6 +60,8 @@ export function MissionsView({
   workspaces = [],
   generatedImage = null,
   imageError = null,
+  defaultSensitivity = 'internal',
+  liveEvent = null,
   onDismissImage,
   onCreateMission,
   onFetchDiff,
@@ -124,34 +130,15 @@ export function MissionsView({
             )}
           </div>
 
-          <div className="flex gap-2 overflow-x-auto pb-1 [mask-image:linear-gradient(to_right,black_92%,transparent)]">
-            {workspaces.map((ws) => {
-              const selected = selectedRepo === ws.path
-              const working = ws.active_chats.some((c) => c.working)
-              return (
-                <button
-                  key={ws.path}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => setSelectedRepo(selected ? null : ws.path)}
-                  className={`flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)] ${
-                    selected
-                      ? 'border-[var(--accent-blue)] bg-[var(--accent-blue-soft)] font-medium text-[var(--accent-blue)]'
-                      : 'border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-primary)]'
-                  }`}
-                >
-                  <span
-                    className={`h-2 w-2 rounded-full ${
-                      working ? 'bg-[var(--accent-green)]' : 'bg-[var(--text-muted)]'
-                    }`}
-                  />
-                  <span>{ws.name}</span>
-                  <span className="font-mono text-[10px] text-[var(--text-muted)]">
-                    {ws.sources.join('·')}
-                  </span>
-                </button>
-              )
-            })}
+          <div className="flex gap-3 overflow-x-auto pb-1.5 [mask-image:linear-gradient(to_right,black_92%,transparent)]">
+            {workspaces.map((ws) => (
+              <GlassFolderCard
+                key={ws.path}
+                workspace={ws}
+                selected={selectedRepo === ws.path}
+                onClick={() => setSelectedRepo(selectedRepo === ws.path ? null : ws.path)}
+              />
+            ))}
           </div>
 
           {showChats && activeChats.length > 0 && (
@@ -183,6 +170,8 @@ export function MissionsView({
         workspaces={workspaces}
         selectedRepo={selectedRepo}
         onSelectRepo={setSelectedRepo}
+        defaultSensitivity={defaultSensitivity}
+        liveEvent={liveEvent}
         onSubmit={onCreateMission}
       />
 
