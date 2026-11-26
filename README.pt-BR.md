@@ -42,6 +42,10 @@ cargo run -p loomd -- --demo --static-dir apps/web/dist
 
 Abra `http://127.0.0.1:4321`.
 
+## Aplicativo de desktop (Tauri v2)
+
+Execute o aplicativo nativo com `pnpm desktop:dev`. Inclui ícone na bandeja do sistema (`Mostrar Loom`, `Parada total`) e uma ilha flutuante superior nativa para acompanhar os agentes em tempo real.
+
 <details>
 <summary><b>Instalar com uma IA</b></summary>
 

@@ -10,22 +10,19 @@
     "frontendDist": "../../web/dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "Loom — Telar",
-        "width": 1240,
-        "height": 820,
-        "minWidth": 375,
-        "minHeight": 640,
-        "resizable": true
-      }
-    ],
     "security": {
       "csp": null
     }
   },
   "bundle": {
     "active": true,
-    "targets": "all"
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ]
   }
 }

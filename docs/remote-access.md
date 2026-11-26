@@ -40,6 +40,49 @@ cloudflared tunnel run --url http://127.0.0.1:4320 loom-node
 
 ---
 
+## Túnel permanente con nombre en Cloudflare
+
+Para usar una URL fija y confiable con QR persistente en lugar de un subdominio temporal:
+
+1. Autentica `cloudflared` en tu cuenta de Cloudflare:
+
+```bash
+cloudflared tunnel login
+```
+
+2. Crea el túnel permanente `loom`:
+
+```bash
+cloudflared tunnel create loom
+```
+
+3. Asocia un registro DNS de tu dominio al túnel:
+
+```bash
+cloudflared tunnel route dns loom loom.tu-dominio.com
+```
+
+4. Crea `~/.cloudflared/config.yml` apuntando a `loomd` en loopback (reemplaza `<TUNNEL_ID>` por el UUID generado en el paso 2):
+
+```yaml
+tunnel: <TUNNEL_ID>
+credentials-file: ~/.cloudflared/<TUNNEL_ID>.json
+
+ingress:
+  - hostname: loom.tu-dominio.com
+    service: http://127.0.0.1:4320
+  - service: http_status:404
+```
+
+5. Inicia el túnel y arranca `loomd` anunciando la URL pública para el emparejamiento QR:
+
+```bash
+cloudflared tunnel run loom
+loomd --remote --public-url https://loom.tu-dominio.com
+```
+
+---
+
 ## Lista de verificacion de seguridad
 
 1. Registra TOTP desde **Seguridad -> Configurar TOTP** (`POST /api/auth/totp/setup` y `/verify`) antes de activar acceso remoto.

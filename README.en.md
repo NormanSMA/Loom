@@ -42,6 +42,10 @@ cargo run -p loomd -- --demo --static-dir apps/web/dist
 
 Open `http://127.0.0.1:4321`.
 
+## Desktop app (Tauri v2)
+
+Run the native desktop shell with `pnpm desktop:dev`. It adds a system tray menu (`Show Loom`, `Emergency stop`) and a native top floating island mirroring live agent state.
+
 <details>
 <summary><b>Install with an AI agent</b></summary>
 

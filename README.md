@@ -6,7 +6,7 @@
 
 **Orquesta Claude Code, Codex, Gemini CLI, Antigravity, OpenCode y OmniRoute desde un solo plano local.**
 
-Daemon en Rust, servidor MCP, aislamiento por Git worktrees, PWA movil y puente nativo con [ClaudeHub](https://github.com/NormanSMA/ClaudeHub).
+Daemon en Rust, servidor MCP, aislamiento por Git worktrees, PWA móvil y puente nativo con [ClaudeHub](https://github.com/NormanSMA/ClaudeHub).
 
 **Español** · [English](README.en.md) · [Português](README.pt-BR.md)
 
@@ -42,6 +42,10 @@ cargo run -p loomd -- --demo --static-dir apps/web/dist
 
 Abre `http://127.0.0.1:4321`.
 
+## Aplicación de escritorio (Tauri v2)
+
+Ejecuta la aplicación nativa de escritorio con `pnpm desktop:dev`. Incluye menú en la bandeja del sistema (`Mostrar Loom`, `Parada total`) e isla flotante superior nativa que refleja el estado de los agentes en tiempo real.
+
 ## Comandos rápidos
 
 ```bash
@@ -62,9 +66,9 @@ Instala y verifica Loom (Telar): https://github.com/NormanSMA/Loom
 1. Clona el repositorio y entra en la carpeta.
 2. Verifica Rust (`rustc -V`), Node 24+ (`node -v`) y pnpm (`pnpm -v`).
 3. Ejecuta `cargo test --workspace` y `pnpm install && pnpm web:test && pnpm web:build`.
-4. Ejecuta `cargo run -p loom-cli -- doctor` y reportame que herramientas estan activas.
+4. Ejecuta `cargo run -p loom-cli -- doctor` y repórtame qué herramientas están activas.
 5. Inicia el modo demo con `cargo run -p loomd -- --demo --static-dir apps/web/dist` en http://127.0.0.1:4321.
-6. Si quiero conectar Antigravity o Claude Code, registramelo apuntando a `loom-mcp` sin copiar claves en archivos rastreados.
+6. Si quiero conectar Antigravity o Claude Code, regístramelo apuntando a `loom-mcp` sin copiar claves en archivos rastreados.
 Lee AGENTS.md antes de hacer cambios.
 ````
 
