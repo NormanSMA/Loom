@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Loom</string>
-    <string name="topbar_title">LOOM // TELAR</string>
+    <string name="topbar_title">LOOM</string>
     <string name="status_connecting">Conectando</string>
     <string name="status_online">En línea</string>
     <string name="status_offline">Sin conexión</string>

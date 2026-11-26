@@ -45,11 +45,14 @@ export function Sidebar({
       <aside className="loom-card hidden w-64 shrink-0 flex-col justify-between border-y-0 border-l-0 p-4 md:flex">
         <div>
           <div className="flex items-center justify-between px-1 pb-4">
-            <div>
-              <p className="font-mono text-base font-bold tracking-widest text-[var(--text-primary)]">
-                {t('app.name').toUpperCase()}
-              </p>
-              <p className="font-mono text-xs text-[var(--text-muted)]">{t('app.subtitle')}</p>
+            <div className="flex items-center gap-2.5">
+              <img src="/icon.svg" alt="" aria-hidden="true" className="h-7 w-7 shrink-0 rounded-lg" />
+              <div>
+                <p className="font-mono text-base font-bold tracking-widest text-[var(--text-primary)]">
+                  {t('app.name').toUpperCase()}
+                </p>
+                <p className="font-mono text-xs text-[var(--text-muted)]">{t('app.subtitle')}</p>
+              </div>
             </div>
             <span className="h-2.5 w-2.5 rounded-full bg-[var(--accent-green)]" />
           </div>
