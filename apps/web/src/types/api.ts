@@ -34,8 +34,52 @@ export interface MissionView {
   status: string
   state: AgentActivityState
   worktree: string
+  repo_root?: string | null
   gate_passed: boolean | null
   updated_at: string
+}
+
+export interface ActiveChatView {
+  source: string
+  session: string
+  title: string
+  model: string
+  working: boolean
+  last_ts: number
+}
+
+export interface WorkspaceInfo {
+  name: string
+  path: string
+  is_git_repo: boolean
+  sources: string[]
+  active_chats: ActiveChatView[]
+  last_ts: number
+}
+
+export interface MissionDiff {
+  mission_id: string
+  summary: string
+  diff: string
+}
+
+export interface ArtifactPreview {
+  id: string
+  kind: string
+  name: string
+  mime_type: string
+  data_uri: string
+  width: number | null
+  height: number | null
+  created_at: string
+}
+
+export interface GeneratedImageResp {
+  backend_used: string
+  mime_type: string
+  width: number
+  height: number
+  data_uri: string
 }
 
 export interface CheckItem {

@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import type {
+  ArtifactPreview,
   CachedSnapshot,
   ClaudeHubBridge,
   DeviceView,
   DoctorReport,
+  GeneratedImageResp,
   HealthInfo,
   LiveEvent,
+  MissionDiff,
   MissionView,
   NetworkInfo,
   PairingTicket,
@@ -14,6 +17,7 @@ import type {
   TelemetrySnapshot,
   TotpSetup,
   TotpStatus,
+  WorkspaceInfo,
 } from '../types/api'
 
 const SNAPSHOT_KEY = 'loom.offline.snapshot.v1'
@@ -48,7 +52,16 @@ function saveCached(snap: CachedSnapshot) {
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(url, init)
   if (!resp.ok) {
-    throw new Error(`HTTP ${resp.status}`)
+    let message = `HTTP ${resp.status}`
+    try {
+      const errBody = (await resp.json()) as { error?: unknown }
+      if (typeof errBody.error === 'string' && errBody.error.trim()) {
+        message = errBody.error
+      }
+    } catch {
+      /* ignore non-JSON error */
+    }
+    throw new Error(message)
   }
   return (await resp.json()) as T
 }
@@ -60,6 +73,7 @@ export function useLoomState() {
   const [health, setHealth] = useState<HealthInfo | null>(null)
   const [doctor, setDoctor] = useState<DoctorReport | null>(null)
   const [providers, setProviders] = useState<ProviderManifest[]>([])
+  const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>([])
   const [skills, setSkills] = useState<SkillEntry[]>([])
   const [missions, setMissions] = useState<MissionView[]>(initial?.missions ?? [])
   const [telemetry, setTelemetry] = useState<TelemetrySnapshot | null>(initial?.telemetry ?? null)
@@ -68,6 +82,8 @@ export function useLoomState() {
   const [network, setNetwork] = useState<NetworkInfo | null>(null)
   const [pairedDevice, setPairedDevice] = useState<DeviceView | null>(null)
   const [pairingNotice, setPairingNotice] = useState<'ok' | 'error' | null>(null)
+  const [generatedImage, setGeneratedImage] = useState<GeneratedImageResp | null>(null)
+  const [imageError, setImageError] = useState<string | null>(null)
   const [totpStatus, setTotpStatus] = useState<TotpStatus>({
     enrolled: false,
     remote_enabled: false,
@@ -78,7 +94,7 @@ export function useLoomState() {
 
   const refresh = useCallback(async () => {
     try {
-      const [h, d, p, s, m, tel, ch, dev, totp, net] = await Promise.all([
+      const [h, d, p, s, m, tel, ch, dev, totp, net, ws] = await Promise.all([
         fetchJson<HealthInfo>('/api/health'),
         fetchJson<DoctorReport>('/api/doctor'),
         fetchJson<ProviderManifest[]>('/api/providers'),
@@ -89,6 +105,7 @@ export function useLoomState() {
         fetchJson<DeviceView[]>('/api/devices'),
         fetchJson<Partial<TotpStatus>>('/api/auth/totp/status').catch((): Partial<TotpStatus> => ({})),
         fetchJson<Partial<NetworkInfo>>('/api/network').catch((): Partial<NetworkInfo> => ({})),
+        fetchJson<WorkspaceInfo[]>('/api/workspaces').catch((): WorkspaceInfo[] => []),
       ])
       const now = new Date().toISOString()
       setHealth(h)
@@ -99,6 +116,7 @@ export function useLoomState() {
       setTelemetry(tel)
       setClaudehub(ch)
       setDevices(dev)
+      setWorkspaces(Array.isArray(ws) ? ws : [])
       if (typeof net?.local_url === 'string') {
         setNetwork({
           local_url: net.local_url,
@@ -187,11 +205,32 @@ export function useLoomState() {
     return () => ws?.close()
   }, [online, simulatedOffline])
 
+  const generateImage = async (payload: {
+    prompt: string
+    style_context?: string
+    mission_id?: string
+  }) => {
+    setImageError(null)
+    try {
+      const resp = await fetchJson<GeneratedImageResp>('/api/images/generate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      setGeneratedImage(resp)
+      return resp
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : 'No se pudo generar la imagen')
+      return null
+    }
+  }
+
   const createMission = async (payload: {
     title: string
     mode: string
     effort: string
     sensitivity: string
+    repo_root?: string
   }) => {
     const created = await fetchJson<MissionView>('/api/missions', {
       method: 'POST',
@@ -199,6 +238,28 @@ export function useLoomState() {
       body: JSON.stringify(payload),
     })
     setMissions((prev) => [created, ...prev])
+    if (payload.mode === 'image') {
+      await generateImage({ prompt: payload.title, mission_id: created.id })
+    }
+  }
+
+  const fetchMissionDiff = (id: string) =>
+    fetchJson<MissionDiff>(`/api/missions/${encodeURIComponent(id)}/diff`)
+
+  const fetchMissionArtifacts = (id: string) =>
+    fetchJson<ArtifactPreview[]>(`/api/missions/${encodeURIComponent(id)}/artifacts`)
+
+  const decideMission = async (id: string, decision: 'approve' | 'reject') => {
+    const updated = await fetchJson<MissionView>(
+      `/api/missions/${encodeURIComponent(id)}/decision`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ decision }),
+      },
+    )
+    setMissions((prev) => prev.map((m) => (m.id === id ? updated : m)))
+    return updated
   }
 
   const createPairing = (baseUrl?: string) =>
@@ -238,6 +299,7 @@ export function useLoomState() {
     health,
     doctor,
     providers,
+    workspaces,
     skills,
     missions,
     telemetry,
@@ -247,11 +309,21 @@ export function useLoomState() {
     pairedDevice,
     pairingNotice,
     dismissPairingNotice: () => setPairingNotice(null),
+    generatedImage,
+    imageError,
+    dismissGeneratedImage: () => {
+      setGeneratedImage(null)
+      setImageError(null)
+    },
     totpStatus,
     liveEvent,
     lastSync,
     refresh,
     createMission,
+    fetchMissionDiff,
+    fetchMissionArtifacts,
+    decideMission,
+    generateImage,
     createPairing,
     revokeDevice,
     setupTotp,

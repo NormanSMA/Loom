@@ -1,7 +1,10 @@
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use chrono::Utc;
 use loom_core::providers::{ProviderManifest, ProviderRegistry};
 use loom_core::skills::SkillEntry;
 use loom_core::types::DoctorStatus;
+use loom_core::workspaces::{ActiveChatView, WorkspaceInfo};
 use loom_drivers::doctor::{CheckItem, DoctorReport};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -38,8 +41,22 @@ pub struct MissionView {
     pub status: String,
     pub state: AgentActivityState,
     pub worktree: String,
+    #[serde(default)]
+    pub repo_root: Option<String>,
     pub gate_passed: Option<bool>,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactPreview {
+    pub id: String,
+    pub kind: String,
+    pub name: String,
+    pub mime_type: String,
+    pub data_uri: String,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -87,6 +104,84 @@ pub struct ClaudeHubBridge {
     pub level: Option<u8>,
     pub level_label: Option<String>,
     pub today_fresh: Option<u64>,
+}
+
+/// Genera un PNG RGBA valido sin comprimir (zlib store) para vista previa en modo demo.
+pub fn build_demo_png_bytes(width: u32, height: u32) -> Vec<u8> {
+    let mut raw = Vec::with_capacity(((width * 4 + 1) * height) as usize);
+    for y in 0..height {
+        raw.push(0); // filter none
+        for x in 0..width {
+            let edge = x < 2 || y < 2 || x + 2 >= width || y + 2 >= height;
+            let checker = ((x / 8) + (y / 8)) % 2 == 0;
+            if edge {
+                raw.extend_from_slice(&[59, 130, 246, 255]); // accent-blue
+            } else if checker {
+                raw.extend_from_slice(&[18, 18, 22, 255]);
+            } else {
+                raw.extend_from_slice(&[34, 197, 94, 220]);
+            }
+        }
+    }
+
+    let mut zlib = Vec::with_capacity(raw.len() + 16);
+    zlib.push(0x78);
+    zlib.push(0x01);
+    let len = raw.len() as u16;
+    zlib.push(0x01); // final stored block
+    zlib.extend_from_slice(&len.to_le_bytes());
+    zlib.extend_from_slice(&(!len).to_le_bytes());
+    zlib.extend_from_slice(&raw);
+    zlib.extend_from_slice(&adler32(&raw).to_be_bytes());
+
+    let mut png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+    let mut ihdr = Vec::with_capacity(13);
+    ihdr.extend_from_slice(&width.to_be_bytes());
+    ihdr.extend_from_slice(&height.to_be_bytes());
+    ihdr.push(8); // bit depth
+    ihdr.push(6); // RGBA
+    ihdr.extend_from_slice(&[0, 0, 0]);
+    write_png_chunk(&mut png, b"IHDR", &ihdr);
+    write_png_chunk(&mut png, b"IDAT", &zlib);
+    write_png_chunk(&mut png, b"IEND", &[]);
+    png
+}
+
+pub fn build_demo_png_data_uri() -> String {
+    let bytes = build_demo_png_bytes(64, 64);
+    format!("data:image/png;base64,{}", STANDARD.encode(bytes))
+}
+
+fn write_png_chunk(out: &mut Vec<u8>, tag: &[u8; 4], data: &[u8]) {
+    out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+    out.extend_from_slice(tag);
+    out.extend_from_slice(data);
+    let mut crc_input = Vec::with_capacity(4 + data.len());
+    crc_input.extend_from_slice(tag);
+    crc_input.extend_from_slice(data);
+    out.extend_from_slice(&crc32(&crc_input).to_be_bytes());
+}
+
+fn adler32(data: &[u8]) -> u32 {
+    let mut s1 = 1_u32;
+    let mut s2 = 0_u32;
+    for &b in data {
+        s1 = (s1 + u32::from(b)) % 65_521;
+        s2 = (s2 + s1) % 65_521;
+    }
+    (s2 << 16) | s1
+}
+
+fn crc32(data: &[u8]) -> u32 {
+    let mut crc = 0xFFFF_FFFF_u32;
+    for &b in data {
+        crc ^= u32::from(b);
+        for _ in 0..8 {
+            let mask = (crc & 1).wrapping_neg();
+            crc = (crc >> 1) ^ (0xEDB8_8320 & mask);
+        }
+    }
+    !crc
 }
 
 pub fn demo_doctor() -> DoctorReport {
@@ -170,12 +265,56 @@ pub fn demo_providers(omniroute_url: &str) -> Vec<ProviderManifest> {
         .unwrap_or_default()
 }
 
+pub fn demo_workspaces() -> Vec<WorkspaceInfo> {
+    let now = Utc::now().timestamp_millis();
+    vec![
+        WorkspaceInfo {
+            name: "Loom".into(),
+            path: "C:/Proyectos/Loom".into(),
+            is_git_repo: true,
+            sources: vec!["claude".into(), "codex".into(), "git".into()],
+            active_chats: vec![ActiveChatView {
+                source: "claude".into(),
+                session: "msn-auth-qr".into(),
+                title: "Emparejamiento QR y controles 375px".into(),
+                model: "Sonnet 5.5".into(),
+                working: true,
+                last_ts: now - 15_000,
+            }],
+            last_ts: now - 15_000,
+        },
+        WorkspaceInfo {
+            name: "ClaudeHub".into(),
+            path: "C:/Proyectos/ClaudeHub".into(),
+            is_git_repo: true,
+            sources: vec!["claude".into(), "opencode".into(), "git".into()],
+            active_chats: vec![ActiveChatView {
+                source: "opencode".into(),
+                session: "ses-oc-1".into(),
+                title: "Lectura SQLite OpenCode y roles".into(),
+                model: "DeepSeek V4 Pro".into(),
+                working: false,
+                last_ts: now - 300_000,
+            }],
+            last_ts: now - 300_000,
+        },
+        WorkspaceInfo {
+            name: "inventario-api".into(),
+            path: "C:/Proyectos/inventario-api".into(),
+            is_git_repo: true,
+            sources: vec!["codex".into(), "git".into()],
+            active_chats: vec![],
+            last_ts: now - 3_600_000,
+        },
+    ]
+}
+
 pub fn demo_missions() -> Vec<MissionView> {
     let now = Utc::now().to_rfc3339();
     vec![
         MissionView {
             id: "msn-auth-qr".into(),
-            title: "Emparejamiento QR efimero y guardia Host".into(),
+            title: "Emparejamiento QR efímero y guardia Host".into(),
             mode: "auto_dag".into(),
             effort: "deep_think".into(),
             sensitivity: "confidential".into(),
@@ -183,12 +322,13 @@ pub fn demo_missions() -> Vec<MissionView> {
             status: "running".into(),
             state: AgentActivityState::Debugging,
             worktree: ".loom/worktrees/msn-auth-qr".into(),
+            repo_root: Some("C:/Proyectos/Loom".into()),
             gate_passed: Some(true),
             updated_at: now.clone(),
         },
         MissionView {
             id: "msn-ui-tokens".into(),
-            title: "Auditoria de contraste AA y responsive 375px".into(),
+            title: "Auditoría de contraste AA y responsive 375px".into(),
             mode: "direct".into(),
             effort: "normal".into(),
             sensitivity: "internal".into(),
@@ -196,12 +336,13 @@ pub fn demo_missions() -> Vec<MissionView> {
             status: "running".into(),
             state: AgentActivityState::Analysing,
             worktree: ".loom/worktrees/msn-ui-tokens".into(),
+            repo_root: Some("C:/Proyectos/ClaudeHub".into()),
             gate_passed: Some(true),
             updated_at: now.clone(),
         },
         MissionView {
             id: "msn-docs-scan".into(),
-            title: "Resumen de logs largos y contrato de diseno".into(),
+            title: "Resumen de logs largos y contrato de diseño".into(),
             mode: "direct".into(),
             effort: "fast".into(),
             sensitivity: "internal".into(),
@@ -209,17 +350,27 @@ pub fn demo_missions() -> Vec<MissionView> {
             status: "completed".into(),
             state: AgentActivityState::Reading,
             worktree: ".loom/worktrees/msn-docs-scan".into(),
+            repo_root: Some("C:/Proyectos/Loom".into()),
             gate_passed: Some(true),
             updated_at: now,
         },
     ]
 }
 
+pub fn demo_diff(mission_id: &str) -> (String, String) {
+    (
+        "2 archivos modificados (+14, -3)".into(),
+        format!(
+            "--- a/crates/loomd/src/server.rs\n+++ b/crates/loomd/src/server.rs\n@@ -12,4 +12,9 @@ // mision {mission_id}\n-    return Err(StatusCode::FORBIDDEN);\n+    if !is_allowed_host(host, state.config.remote_enabled) {{\n+        return Err(StatusCode::FORBIDDEN);\n+    }}\n+    Ok(next.run(req).await)"
+        ),
+    )
+}
+
 pub fn demo_skills() -> Vec<SkillEntry> {
     vec![
         SkillEntry {
             name: "ui-ux-pro-max".into(),
-            description: "Tokens de diseno, contraste WCAG AA y responsive 375px.".into(),
+            description: "Tokens de diseño, contraste WCAG AA y responsive 375px.".into(),
             path: ".loom/skills/ui-ux-pro-max/SKILL.md".into(),
             source: "project".into(),
         },
@@ -231,7 +382,7 @@ pub fn demo_skills() -> Vec<SkillEntry> {
         },
         SkillEntry {
             name: "code-review".into(),
-            description: "Revision estricta de regresiones, alcance y seguridad.".into(),
+            description: "Revisión estricta de regresiones, alcance y seguridad.".into(),
             path: ".agents/skills/code-review/SKILL.md".into(),
             source: "agents".into(),
         },

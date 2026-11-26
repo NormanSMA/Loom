@@ -2,8 +2,9 @@ use crate::auth::{
     AuthManager, DeviceView, ExchangeResult, PairingTicket, TotpSetup, is_allowed_host,
 };
 use crate::demo::{
-    AgentActivityState, ClaudeHubBridge, LiveEvent, MissionView, TelemetrySnapshot, demo_doctor,
-    demo_missions, demo_providers, demo_skills, demo_telemetry,
+    AgentActivityState, ArtifactPreview, ClaudeHubBridge, HeatPoint, LiveEvent, MissionView,
+    ProviderMetric, TelemetryLog, TelemetrySnapshot, build_demo_png_data_uri, demo_diff,
+    demo_doctor, demo_missions, demo_providers, demo_skills, demo_telemetry, demo_workspaces,
 };
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, Request, State};
@@ -12,6 +13,8 @@ use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use chrono::Utc;
 use loom_core::capsule::{CapsuleRequest, compile_capsule};
 use loom_core::config::{LoomConfig, default_providers_dir};
@@ -20,9 +23,14 @@ use loom_core::providers::ProviderRegistry;
 use loom_core::router::{TaskRole, read_claudehub_quota, route_task};
 use loom_core::skills::SkillIndex;
 use loom_core::types::Sensitivity;
+use loom_core::workspaces::{
+    ActiveChatView, WorkspaceInfo, discover_local_workspaces, normalize_workspace_key,
+};
 use loom_drivers::doctor::run_doctor;
+use loom_drivers::image_gen::{ImageBackend, ImageGenRequest, generate_image};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -37,6 +45,8 @@ pub struct AppState {
     pub started_at: Instant,
     pub auth: Arc<AuthManager>,
     pub missions: Arc<RwLock<Vec<MissionView>>>,
+    pub logs: Arc<RwLock<Vec<TelemetryLog>>>,
+    pub artifacts: Arc<RwLock<HashMap<String, Vec<ArtifactPreview>>>>,
     pub active_cancels: Arc<Mutex<Vec<oneshot::Sender<()>>>>,
     pub events_tx: broadcast::Sender<LiveEvent>,
     pub http: reqwest::Client,
@@ -48,6 +58,22 @@ impl AppState {
     pub fn new(config: LoomConfig, demo: bool) -> Self {
         let (events_tx, _) = broadcast::channel(128);
         let initial_missions = if demo { demo_missions() } else { Vec::new() };
+        let mut initial_artifacts: HashMap<String, Vec<ArtifactPreview>> = HashMap::new();
+        if demo {
+            initial_artifacts.insert(
+                "msn-ui-tokens".into(),
+                vec![ArtifactPreview {
+                    id: "art-demo-1".into(),
+                    kind: "image".into(),
+                    name: "ui-token-preview.png".into(),
+                    mime_type: "image/png".into(),
+                    data_uri: build_demo_png_data_uri(),
+                    width: Some(64),
+                    height: Some(64),
+                    created_at: Utc::now().to_rfc3339(),
+                }],
+            );
+        }
         let http = reqwest::Client::builder()
             .timeout(Duration::from_millis(1500))
             .build()
@@ -59,6 +85,8 @@ impl AppState {
             started_at: Instant::now(),
             auth: Arc::new(AuthManager::new()),
             missions: Arc::new(RwLock::new(initial_missions)),
+            logs: Arc::new(RwLock::new(Vec::new())),
+            artifacts: Arc::new(RwLock::new(initial_artifacts)),
             active_cancels: Arc::new(Mutex::new(Vec::new())),
             events_tx,
             http,
@@ -74,8 +102,13 @@ pub fn build_router(state: AppState, static_dir: Option<PathBuf>) -> Router {
         .route("/api/network", get(network_info))
         .route("/api/doctor", get(doctor))
         .route("/api/providers", get(providers))
+        .route("/api/workspaces", get(workspaces))
         .route("/api/skills", get(skills))
         .route("/api/missions", get(list_missions).post(create_mission))
+        .route("/api/missions/{id}/diff", get(mission_diff))
+        .route("/api/missions/{id}/decision", post(mission_decision))
+        .route("/api/missions/{id}/artifacts", get(mission_artifacts))
+        .route("/api/images/generate", post(generate_image_route))
         .route("/api/telemetry", get(telemetry))
         .route("/api/claudehub", get(claudehub))
         .route("/api/auth/pair", post(auth_pair))
@@ -296,11 +329,22 @@ async fn create_mission(
         status: "queued".into(),
         state: AgentActivityState::Thinking,
         worktree: format!(".loom/worktrees/{id}"),
+        repo_root: req.repo_root,
         gate_passed: None,
         updated_at: now.clone(),
     };
 
     state.missions.write().await.insert(0, mission.clone());
+    push_log(
+        &state.logs,
+        TelemetryLog {
+            ts: now.clone(),
+            provider_id: routed.clone(),
+            level: "info".into(),
+            message: format!("Misión despachada: {title}"),
+        },
+    )
+    .await;
     let _ = state.events_tx.send(LiveEvent {
         kind: "mission_created".into(),
         state: AgentActivityState::Thinking,
@@ -313,19 +357,518 @@ async fn create_mission(
     (StatusCode::CREATED, Json(mission)).into_response()
 }
 
+async fn push_log(logs: &RwLock<Vec<TelemetryLog>>, entry: TelemetryLog) {
+    let mut guard = logs.write().await;
+    guard.insert(0, entry);
+    guard.truncate(30);
+}
+
+async fn workspaces(State(state): State<AppState>) -> Json<Vec<WorkspaceInfo>> {
+    if state.demo {
+        return Json(demo_workspaces());
+    }
+
+    let roots: Vec<PathBuf> = std::env::current_dir().into_iter().collect();
+    let mut list = tokio::task::spawn_blocking(move || discover_local_workspaces(&roots))
+        .await
+        .unwrap_or_default();
+
+    let base = state.config.claudehub_url.trim_end_matches('/');
+    let act_url = format!("{base}/api/active");
+    let ses_url = format!("{base}/api/sessions?range=30d");
+    let (act_res, ses_res) = tokio::join!(
+        state.http.get(&act_url).send(),
+        state.http.get(&ses_url).send()
+    );
+
+    let mut index: HashMap<String, usize> = list
+        .iter()
+        .enumerate()
+        .map(|(i, w)| (normalize_workspace_key(std::path::Path::new(&w.path)), i))
+        .collect();
+
+    if let Ok(resp) = act_res
+        && let Ok(val) = resp.json::<Value>().await
+        && let Some(chats) = val.get("chats").and_then(Value::as_array)
+    {
+        for c in chats {
+            let Some(cwd) = c.get("cwd").and_then(Value::as_str) else {
+                continue;
+            };
+            let cwd_path = std::path::Path::new(cwd);
+            if !cwd_path.is_dir() {
+                continue;
+            }
+            let source = c
+                .get("source")
+                .and_then(Value::as_str)
+                .unwrap_or("claude")
+                .to_string();
+            let last_ts = c.get("lastTs").and_then(Value::as_i64).unwrap_or(0);
+            let idx = ensure_workspace(&mut list, &mut index, cwd_path, &source, last_ts);
+            list[idx].active_chats.push(ActiveChatView {
+                source,
+                session: c
+                    .get("session")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                title: c
+                    .get("title")
+                    .and_then(Value::as_str)
+                    .unwrap_or("Sesión activa")
+                    .to_string(),
+                model: c
+                    .get("model")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown")
+                    .to_string(),
+                working: c.get("working").and_then(Value::as_bool).unwrap_or(false),
+                last_ts,
+            });
+        }
+    }
+
+    if let Ok(resp) = ses_res
+        && let Ok(sessions) = resp.json::<Vec<Value>>().await
+    {
+        for s in sessions.iter().take(25) {
+            let Some(cwd) = s.get("cwd").and_then(Value::as_str) else {
+                continue;
+            };
+            let cwd_path = std::path::Path::new(cwd);
+            if !cwd_path.is_dir() {
+                continue;
+            }
+            let last_ts = s.get("last").and_then(Value::as_i64).unwrap_or(0);
+            ensure_workspace(&mut list, &mut index, cwd_path, "claude", last_ts);
+        }
+    }
+
+    list.sort_by(|a, b| {
+        b.active_chats
+            .iter()
+            .any(|c| c.working)
+            .cmp(&a.active_chats.iter().any(|c| c.working))
+            .then_with(|| b.active_chats.len().cmp(&a.active_chats.len()))
+            .then_with(|| b.last_ts.cmp(&a.last_ts))
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+    list.truncate(40);
+    Json(list)
+}
+
+fn ensure_workspace(
+    list: &mut Vec<WorkspaceInfo>,
+    index: &mut HashMap<String, usize>,
+    path: &std::path::Path,
+    source: &str,
+    ts: i64,
+) -> usize {
+    let key = normalize_workspace_key(path);
+    if let Some(&idx) = index.get(&key) {
+        if !list[idx].sources.iter().any(|s| s == source) {
+            list[idx].sources.push(source.to_string());
+        }
+        if ts > list[idx].last_ts {
+            list[idx].last_ts = ts;
+        }
+        return idx;
+    }
+    let display = path.to_string_lossy().replace('\\', "/");
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or(&display)
+        .to_string();
+    let idx = list.len();
+    list.push(WorkspaceInfo {
+        name,
+        path: display,
+        is_git_repo: path.join(".git").exists(),
+        sources: vec![source.to_string()],
+        active_chats: Vec::new(),
+        last_ts: ts,
+    });
+    index.insert(key, idx);
+    idx
+}
+
+#[derive(Debug, Serialize)]
+struct MissionDiffResp {
+    mission_id: String,
+    summary: String,
+    diff: String,
+}
+
+async fn mission_diff(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
+    if state.demo {
+        let (summary, diff) = demo_diff(&id);
+        return Json(MissionDiffResp {
+            mission_id: id,
+            summary,
+            diff,
+        })
+        .into_response();
+    }
+
+    let repo_root = state
+        .missions
+        .read()
+        .await
+        .iter()
+        .find(|m| m.id == id)
+        .and_then(|m| m.repo_root.clone())
+        .filter(|p| std::path::Path::new(p).is_dir())
+        .unwrap_or_else(|| ".".to_string());
+
+    let out = tokio::task::spawn_blocking(move || read_git_diff(&repo_root))
+        .await
+        .unwrap_or_else(|_| {
+            (
+                "Sin datos".into(),
+                "Sin cambios pendientes en worktree.".into(),
+            )
+        });
+
+    Json(MissionDiffResp {
+        mission_id: id,
+        summary: out.0,
+        diff: out.1,
+    })
+    .into_response()
+}
+
+fn read_git_diff(repo_root: &str) -> (String, String) {
+    let stat_out = std::process::Command::new("git")
+        .args(["-C", repo_root, "diff", "--stat"])
+        .output();
+    let diff_out = std::process::Command::new("git")
+        .args(["-C", repo_root, "diff"])
+        .output();
+
+    let summary = stat_out
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "Worktree limpio".into());
+
+    let mut diff = diff_out
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        .unwrap_or_default();
+
+    if diff.trim().is_empty() {
+        diff = "Sin cambios pendientes en worktree.".into();
+    } else if diff.len() > 16_384 {
+        diff.truncate(16_384);
+        diff.push_str("\n... (diff truncado a 16 KiB)");
+    }
+
+    (summary, diff)
+}
+
+#[derive(Debug, Deserialize)]
+struct DecisionReq {
+    decision: String,
+}
+
+async fn mission_decision(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<DecisionReq>,
+) -> impl IntoResponse {
+    let approved = match req.decision.trim().to_ascii_lowercase().as_str() {
+        "approve" => true,
+        "reject" => false,
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "decision debe ser approve o reject" })),
+            )
+                .into_response();
+        }
+    };
+
+    let now = Utc::now().to_rfc3339();
+    let mut updated: Option<MissionView> = None;
+    {
+        let mut guard = state.missions.write().await;
+        if let Some(m) = guard.iter_mut().find(|m| m.id == id) {
+            m.status = if approved {
+                "approved".into()
+            } else {
+                "rejected".into()
+            };
+            m.gate_passed = Some(approved);
+            m.state = AgentActivityState::Idle;
+            m.updated_at = now.clone();
+            updated = Some(m.clone());
+        }
+    }
+
+    let Some(mission) = updated else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "mision no encontrada" })),
+        )
+            .into_response();
+    };
+
+    push_log(
+        &state.logs,
+        TelemetryLog {
+            ts: now.clone(),
+            provider_id: mission.provider_id.clone(),
+            level: if approved { "info" } else { "warn" }.into(),
+            message: format!(
+                "{}: {}",
+                if approved {
+                    "Misión aprobada"
+                } else {
+                    "Misión rechazada"
+                },
+                mission.title
+            ),
+        },
+    )
+    .await;
+
+    let _ = state.events_tx.send(LiveEvent {
+        kind: "agent_activity".into(),
+        state: AgentActivityState::Idle,
+        provider_id: mission.provider_id.clone(),
+        target: mission.id.clone(),
+        detail: if approved {
+            "Cambio aprobado por operador".into()
+        } else {
+            "Cambio rechazado por operador".into()
+        },
+        ts: now,
+    });
+
+    (StatusCode::OK, Json(mission)).into_response()
+}
+
+async fn mission_artifacts(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Json<Vec<ArtifactPreview>> {
+    let guard = state.artifacts.read().await;
+    Json(guard.get(&id).cloned().unwrap_or_default())
+}
+
+#[derive(Debug, Deserialize)]
+struct GenerateImageRouteReq {
+    prompt: String,
+    #[serde(default)]
+    style_context: Option<String>,
+    #[serde(default)]
+    mission_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct GenerateImageRouteResp {
+    backend_used: String,
+    mime_type: String,
+    width: u32,
+    height: u32,
+    data_uri: String,
+}
+
+async fn generate_image_route(
+    State(state): State<AppState>,
+    Json(req): Json<GenerateImageRouteReq>,
+) -> impl IntoResponse {
+    let prompt = req.prompt.trim();
+    if prompt.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "prompt obligatorio" })),
+        )
+            .into_response();
+    }
+
+    let now = Utc::now().to_rfc3339();
+    let result = if state.demo {
+        Ok(GenerateImageRouteResp {
+            backend_used: "demo_raster".into(),
+            mime_type: "image/png".into(),
+            width: 64,
+            height: 64,
+            data_uri: build_demo_png_data_uri(),
+        })
+    } else {
+        let out_dir = PathBuf::from(".loom").join("artifacts");
+        let file_name = format!("gen-{}.png", &Uuid::new_v4().simple().to_string()[..8]);
+        let out_path = out_dir.join(file_name);
+        match generate_image(&ImageGenRequest {
+            prompt: prompt.to_string(),
+            style_context: req.style_context,
+            output_path: out_path.clone(),
+            backend: ImageBackend::Auto,
+            custom_endpoint: None,
+        })
+        .await
+        {
+            Ok(generated) => {
+                let bytes = std::fs::read(&generated.output_path).unwrap_or_default();
+                let mime = if generated.validation.format == "png" {
+                    "image/png"
+                } else {
+                    "image/webp"
+                };
+                Ok(GenerateImageRouteResp {
+                    backend_used: generated.backend_used,
+                    mime_type: mime.into(),
+                    width: generated.validation.width.unwrap_or(64),
+                    height: generated.validation.height.unwrap_or(64),
+                    data_uri: format!("data:{mime};base64,{}", STANDARD.encode(bytes)),
+                })
+            }
+            Err(err) => Err(err.to_string()),
+        }
+    };
+
+    match result {
+        Ok(resp) => {
+            if let Some(mission_id) = req.mission_id.as_deref().filter(|s| !s.is_empty()) {
+                let preview = ArtifactPreview {
+                    id: format!("art-{}", &Uuid::new_v4().simple().to_string()[..8]),
+                    kind: "image".into(),
+                    name: prompt.chars().take(36).collect(),
+                    mime_type: resp.mime_type.clone(),
+                    data_uri: resp.data_uri.clone(),
+                    width: Some(resp.width),
+                    height: Some(resp.height),
+                    created_at: now,
+                };
+                state
+                    .artifacts
+                    .write()
+                    .await
+                    .entry(mission_id.to_string())
+                    .or_default()
+                    .insert(0, preview);
+            }
+            (StatusCode::OK, Json(resp)).into_response()
+        }
+        Err(msg) => (StatusCode::BAD_REQUEST, Json(json!({ "error": msg }))).into_response(),
+    }
+}
+
 async fn telemetry(State(state): State<AppState>) -> Json<TelemetrySnapshot> {
     if state.demo {
         return Json(demo_telemetry());
     }
-    let count = state.missions.read().await.len() as u32;
+
+    let missions = state.missions.read().await.clone();
+    let count = missions.len() as u32;
+    let decided: Vec<&MissionView> = missions
+        .iter()
+        .filter(|m| m.gate_passed.is_some())
+        .collect();
+    let gate_pass_rate = if decided.is_empty() {
+        100.0
+    } else {
+        let passed = decided
+            .iter()
+            .filter(|m| m.gate_passed == Some(true))
+            .count() as f64;
+        (passed / decided.len() as f64) * 100.0
+    };
+
+    let base = state.config.claudehub_url.trim_end_matches('/');
+    let sum_url = format!("{base}/api/summary?range=all");
+    let src_url = format!("{base}/api/sources");
+    let (sum_res, src_res) = tokio::join!(
+        state.http.get(&sum_url).send(),
+        state.http.get(&src_url).send()
+    );
+
+    let mut total_tokens = 0_u64;
+    let mut day_counts: HashMap<String, u64> = HashMap::new();
+    if let Ok(resp) = sum_res
+        && let Ok(val) = resp.json::<Value>().await
+    {
+        total_tokens = val
+            .pointer("/tokens/total")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        if let Some(arr) = val.get("heatmap").and_then(Value::as_array) {
+            for pt in arr {
+                if let (Some(day), Some(tokens)) = (
+                    pt.get("day").and_then(Value::as_str),
+                    pt.get("tokens").and_then(Value::as_u64),
+                ) {
+                    day_counts.insert(day.to_string(), tokens);
+                }
+            }
+        }
+    }
+
+    let max_day = day_counts.values().copied().max().unwrap_or(1).max(1);
+    let today = Utc::now().date_naive();
+    let mut heatmap = Vec::with_capacity(98);
+    for i in (0_i64..98).rev() {
+        let day = (today - chrono::Duration::days(i))
+            .format("%Y-%m-%d")
+            .to_string();
+        let raw = day_counts.get(&day).copied().unwrap_or(0);
+        let count = if raw == 0 {
+            0
+        } else {
+            (((raw as f64 / max_day as f64) * 9.0).ceil() as u32).clamp(1, 10)
+        };
+        heatmap.push(HeatPoint { day, count });
+    }
+
+    let mut by_provider = Vec::new();
+    if let Ok(resp) = src_res
+        && let Ok(map) = resp.json::<Value>().await
+        && let Some(obj) = map.as_object()
+    {
+        let labels = [
+            ("claude", "Claude Code"),
+            ("codex", "Codex CLI"),
+            ("gemini", "Gemini CLI"),
+            ("antigravity", "Antigravity"),
+            ("opencode", "OpenCode"),
+            ("omniroute", "OmniRoute"),
+            ("loom", "Loom"),
+        ];
+        for (id, label) in labels {
+            if let Some(src) = obj.get(id) {
+                let records = src.get("records").and_then(Value::as_u64).unwrap_or(0) as u32;
+                let ok = src.get("ok").and_then(Value::as_bool).unwrap_or(false);
+                if records > 0 || ok {
+                    by_provider.push(ProviderMetric {
+                        provider_id: id.into(),
+                        name: label.into(),
+                        calls: records,
+                        success_rate: if ok { 100.0 } else { 0.0 },
+                        p95_ms: 0,
+                        errors_429: 0,
+                        errors_403: 0,
+                        tokens: 0,
+                    });
+                }
+            }
+        }
+    }
+
+    let logs = state.logs.read().await.clone();
     Json(TelemetrySnapshot {
-        total_tokens: 0,
+        total_tokens,
         active_agents: count,
-        gate_pass_rate: 100.0,
+        gate_pass_rate,
         avg_latency_ms: 0,
-        heatmap: Vec::new(),
-        by_provider: Vec::new(),
-        logs: Vec::new(),
+        heatmap,
+        by_provider,
+        logs,
     })
 }
 
@@ -891,5 +1434,105 @@ mod tests {
                 .starts_with("https://loom-demo.trycloudflare.com/?pair=lm_")
         );
         assert!(ticket.qr_svg.contains("<svg"));
+    }
+
+    #[tokio::test]
+    async fn serves_workspaces_diffs_decisions_and_generated_images() {
+        let (app, _) = test_app();
+
+        let ws_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/workspaces")
+                    .header("host", "127.0.0.1:4321")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(ws_resp.status(), StatusCode::OK);
+        let ws_bytes = axum::body::to_bytes(ws_resp.into_body(), 32768)
+            .await
+            .unwrap();
+        let ws: Vec<WorkspaceInfo> = serde_json::from_slice(&ws_bytes).unwrap();
+        assert!(!ws.is_empty());
+
+        let diff_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/missions/msn-auth-qr/diff")
+                    .header("host", "127.0.0.1:4321")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(diff_resp.status(), StatusCode::OK);
+
+        let dec_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/missions/msn-auth-qr/decision")
+                    .header("host", "127.0.0.1:4321")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"decision":"approve"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(dec_resp.status(), StatusCode::OK);
+        let dec_bytes = axum::body::to_bytes(dec_resp.into_body(), 8192)
+            .await
+            .unwrap();
+        let dec_mission: MissionView = serde_json::from_slice(&dec_bytes).unwrap();
+        assert_eq!(dec_mission.status, "approved");
+
+        let img_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/images/generate")
+                    .header("host", "127.0.0.1:4321")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"prompt":"Icono vector","mission_id":"msn-auth-qr"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(img_resp.status(), StatusCode::OK);
+        let img_bytes = axum::body::to_bytes(img_resp.into_body(), 65536)
+            .await
+            .unwrap();
+        let img_val: Value = serde_json::from_slice(&img_bytes).unwrap();
+        let data_uri = img_val.get("data_uri").and_then(Value::as_str).unwrap();
+        assert!(data_uri.starts_with("data:image/png;base64,"));
+        let decoded = STANDARD
+            .decode(data_uri.trim_start_matches("data:image/png;base64,"))
+            .unwrap();
+        assert!(decoded.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]));
+
+        let art_resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/missions/msn-auth-qr/artifacts")
+                    .header("host", "127.0.0.1:4321")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(art_resp.status(), StatusCode::OK);
+        let art_bytes = axum::body::to_bytes(art_resp.into_body(), 65536)
+            .await
+            .unwrap();
+        let arts: Vec<ArtifactPreview> = serde_json::from_slice(&art_bytes).unwrap();
+        assert_eq!(arts.len(), 1);
     }
 }

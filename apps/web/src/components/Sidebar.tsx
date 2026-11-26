@@ -77,8 +77,8 @@ export function Sidebar({ activeTab, onSelect, onNewMission }: SidebarProps) {
       </aside>
 
       <nav
-        aria-label="Movil"
-        className="loom-card fixed inset-x-0 bottom-0 z-30 flex items-center justify-around border-x-0 border-b-0 px-1 py-1 md:hidden"
+        aria-label="Móvil"
+        className="loom-card fixed inset-x-0 bottom-0 z-30 flex items-stretch justify-around border-x-0 border-b-0 bg-[var(--bg-surface)]/95 px-1 pt-1.5 pb-[max(0.45rem,env(safe-area-inset-bottom))] backdrop-blur-md md:hidden"
       >
         {ITEMS.map((item) => {
           const Icon = item.icon
@@ -88,12 +88,15 @@ export function Sidebar({ activeTab, onSelect, onNewMission }: SidebarProps) {
               key={item.id}
               type="button"
               onClick={() => onSelect(item.id)}
-              className={`flex min-h-11 min-w-11 flex-col items-center justify-center rounded-xl px-2 text-[11px] focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)] ${
-                active ? 'text-[var(--accent-blue)]' : 'text-[var(--text-muted)]'
+              className={`relative flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center rounded-xl px-1 text-[11px] transition-colors focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)] ${
+                active ? 'font-medium text-[var(--accent-blue)]' : 'text-[var(--text-muted)]'
               }`}
             >
-              <Icon className="h-4 w-4" aria-hidden="true" />
-              <span className="mt-0.5 truncate">{t(item.label)}</span>
+              {active && (
+                <span className="absolute top-0.5 h-0.5 w-5 rounded-full bg-[var(--accent-blue)]" />
+              )}
+              <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span className="mt-0.5 max-w-full truncate">{t(item.label)}</span>
             </button>
           )
         })}

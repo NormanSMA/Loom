@@ -37,7 +37,7 @@ function LoomShell() {
   }
 
   return (
-    <div className="loom-dot-bg flex min-h-screen pb-16 md:pb-0">
+    <div className="loom-dot-bg flex min-h-screen pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-0">
       <Sidebar
         activeTab={tab}
         onSelect={setTab}
@@ -84,7 +84,17 @@ function LoomShell() {
 
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-5 sm:px-6">
           {tab === 'missions' && (
-            <MissionsView missions={loom.missions} onCreateMission={loom.createMission} />
+            <MissionsView
+              missions={loom.missions}
+              workspaces={loom.workspaces}
+              generatedImage={loom.generatedImage}
+              imageError={loom.imageError}
+              onDismissImage={loom.dismissGeneratedImage}
+              onCreateMission={loom.createMission}
+              onFetchDiff={loom.fetchMissionDiff}
+              onFetchArtifacts={loom.fetchMissionArtifacts}
+              onDecideMission={loom.decideMission}
+            />
           )}
           {tab === 'connectors' && (
             <ConnectorsView
