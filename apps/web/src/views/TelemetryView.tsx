@@ -32,7 +32,7 @@ export function TelemetryView({ telemetry }: TelemetryViewProps) {
         <p className="text-sm text-[var(--text-secondary)]">{t('telemetry.subtitle')}</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <LedBarCard
           label={t('telemetry.tokens')}
           value={formatCompactTokens(telemetry.total_tokens)}

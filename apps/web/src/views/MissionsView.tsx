@@ -124,7 +124,7 @@ export function MissionsView({
             )}
           </div>
 
-          <div className="flex gap-2 overflow-x-auto pb-1">
+          <div className="flex gap-2 overflow-x-auto pb-1 [mask-image:linear-gradient(to_right,black_92%,transparent)]">
             {workspaces.map((ws) => {
               const selected = selectedRepo === ws.path
               const working = ws.active_chats.some((c) => c.working)

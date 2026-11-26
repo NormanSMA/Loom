@@ -94,14 +94,17 @@ export function SecurityView({
       )}
 
       <section className="loom-card space-y-4 rounded-2xl p-4">
-        <button
-          type="button"
-          onClick={() => void handlePair()}
-          className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-blue)] px-4 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)] sm:w-auto"
-        >
-          <QrCode className="h-4 w-4 shrink-0" />
-          {t('action.pairQr')}
-        </button>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-[var(--text-secondary)]">{t('security.scanHint')}</p>
+          <button
+            type="button"
+            onClick={() => void handlePair()}
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-blue)] px-4 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)] sm:w-auto"
+          >
+            <QrCode className="h-4 w-4 shrink-0" />
+            {t('action.pairQr')}
+          </button>
+        </div>
 
         {ticket && (
           <div className="flex flex-col items-start gap-4 border-t border-[var(--border-subtle)] pt-4 sm:flex-row sm:items-center">

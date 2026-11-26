@@ -88,8 +88,9 @@ export function KnowledgeView({ skills }: KnowledgeViewProps) {
         {filtered.map((skill) => {
           const id = `${skill.source}-${skill.name}`
           const isOpen = Boolean(expanded[id])
-          return (
-            <article key={id} className="loom-card rounded-2xl p-4">
+          const canExpand = skill.description.length > 90
+          const cardBody = (
+            <>
               <div className="flex items-start justify-between gap-2">
                 <h2 className="min-w-0 break-words font-mono text-sm font-medium text-[var(--text-primary)]">
                   {skill.name}
@@ -105,15 +106,26 @@ export function KnowledgeView({ skills }: KnowledgeViewProps) {
               >
                 {skill.description}
               </p>
-              {skill.description.length > 90 && (
+              {canExpand && (
+                <span className="mt-2 inline-flex min-h-8 items-center text-xs font-medium text-[var(--accent-blue)]">
+                  {isOpen ? t('knowledge.collapse') : t('knowledge.expand')}
+                </span>
+              )}
+            </>
+          )
+          return (
+            <article key={id} className="loom-card rounded-2xl p-4">
+              {canExpand ? (
                 <button
                   type="button"
                   aria-expanded={isOpen}
                   onClick={() => setExpanded((prev) => ({ ...prev, [id]: !prev[id] }))}
-                  className="mt-2 inline-flex min-h-11 items-center text-xs font-medium text-[var(--accent-blue)] focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)]"
+                  className="w-full rounded-xl text-left focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)]"
                 >
-                  {isOpen ? t('knowledge.collapse') : t('knowledge.expand')}
+                  {cardBody}
                 </button>
+              ) : (
+                cardBody
               )}
             </article>
           )

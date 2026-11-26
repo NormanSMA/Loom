@@ -36,7 +36,7 @@ export function DotHeatmap({ points, title }: DotHeatmapProps) {
           <span>{t('telemetry.more')}</span>
         </div>
       </div>
-      <div className="grid grid-cols-14 gap-1 sm:gap-1.5">
+      <div className="grid max-w-lg grid-cols-14 gap-1 sm:gap-1.5">
         {cells.map((pt) => (
           <div
             key={pt.day}
