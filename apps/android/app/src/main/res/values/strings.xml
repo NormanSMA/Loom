@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Loom</string>
+    <string name="topbar_title">LOOM // TELAR</string>
+    <string name="status_connecting">Conectando</string>
+    <string name="status_online">En línea</string>
+    <string name="status_offline">Sin conexión</string>
+    <string name="sound_button_mute_desc">Silenciar sonido</string>
+    <string name="sound_button_unmute_desc">Activar sonido</string>
+    <string name="endpoint_button_desc">Configurar nodo</string>
+    <string name="offline_title">Nodo no disponible</string>
+    <string name="offline_subtitle">Verifica el daemon local por USB (adb reverse) o la URL HTTPS del túnel.</string>
+    <string name="action_retry">Reintentar</string>
+    <string name="action_configure_node">Configurar nodo</string>
+    <string name="action_test_sound">Probar sonido</string>
+    <string name="dialog_endpoint_title">Configurar nodo Loom</string>
+    <string name="dialog_endpoint_hint">URL del nodo (http://127.0.0.1:4320 o https://...)</string>
+    <string name="dialog_preset_usb">Usar USB local (http://127.0.0.1:4320)</string>
+    <string name="dialog_save">Guardar</string>
+    <string name="dialog_cancel">Cancelar</string>
+    <string name="error_invalid_endpoint">Usa http:// solo en 127.0.0.1/localhost o https:// para nodos remotos.</string>
+</resources>

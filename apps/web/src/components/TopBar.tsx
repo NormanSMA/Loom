@@ -1,6 +1,13 @@
-import { useId, useState } from 'react'
-import { OctagonAlert, Settings } from 'lucide-react'
+import { useEffect, useId, useState } from 'react'
+import { OctagonAlert, Settings, Volume2, VolumeX } from 'lucide-react'
 import { useI18n, type LocaleCode } from '../i18n'
+import {
+  getSoundPreferences,
+  playLoomSound,
+  setSoundPreferences,
+  subscribeSoundPreferences,
+  type SoundPreferences,
+} from '../lib/sound'
 
 export interface TopBarProps {
   demo: boolean
@@ -16,6 +23,8 @@ interface TopBarCopy {
   localTooltip: string
   tunnelTooltip: string
   demoTooltip: string
+  soundMute: string
+  soundUnmute: string
   settingsLabel: string
   killHint: string
 }
@@ -28,6 +37,8 @@ const TOPBAR_COPY: Record<LocaleCode, TopBarCopy> = {
     localTooltip: 'Red local 127.0.0.1:4320',
     tunnelTooltip: 'Túnel remoto cifrado',
     demoTooltip: 'Modo demo con datos locales simulados',
+    soundMute: 'Silenciar efectos de sonido',
+    soundUnmute: 'Activar efectos de sonido',
     settingsLabel: 'Ajustes y perfil',
     killHint: 'Detiene de inmediato los agentes y worktrees activos',
   },
@@ -38,6 +49,8 @@ const TOPBAR_COPY: Record<LocaleCode, TopBarCopy> = {
     localTooltip: 'Local network 127.0.0.1:4320',
     tunnelTooltip: 'Encrypted remote tunnel',
     demoTooltip: 'Demo mode with simulated local data',
+    soundMute: 'Mute sound effects',
+    soundUnmute: 'Enable sound effects',
     settingsLabel: 'Settings & profile',
     killHint: 'Immediately stops all active agents and worktrees',
   },
@@ -48,6 +61,8 @@ const TOPBAR_COPY: Record<LocaleCode, TopBarCopy> = {
     localTooltip: 'Rede local 127.0.0.1:4320',
     tunnelTooltip: 'Túnel remoto criptografado',
     demoTooltip: 'Modo demo com dados locais simulados',
+    soundMute: 'Silenciar efeitos sonoros',
+    soundUnmute: 'Ativar efeitos sonoros',
     settingsLabel: 'Ajustes e perfil',
     killHint: 'Interrompe imediatamente todos os agentes e worktrees ativos',
   },
@@ -61,11 +76,25 @@ export function TopBar({
 }: TopBarProps) {
   const { locale, t } = useI18n()
   const [stopping, setStopping] = useState(false)
+  const [soundPrefs, setSoundPrefs] = useState<SoundPreferences>(getSoundPreferences)
   const signalTooltipId = useId()
+  const soundTooltipId = useId()
   const settingsTooltipId = useId()
   const killTooltipId = useId()
 
+  useEffect(() => subscribeSoundPreferences(setSoundPrefs), [])
+
   const copy = TOPBAR_COPY[locale]
+  const soundLabel = soundPrefs.enabled ? copy.soundMute : copy.soundUnmute
+  const soundAriaName = locale === 'en' ? 'Sound effects' : locale === 'pt-BR' ? 'Efeitos sonoros' : 'Efectos de sonido'
+
+  const handleToggleSound = () => {
+    const next = setSoundPreferences({ enabled: !soundPrefs.enabled })
+    setSoundPrefs(next)
+    if (next.enabled) {
+      playLoomSound('click', { fromUserGesture: true })
+    }
+  }
 
   const badgeLabel = demo
     ? copy.demoTag
@@ -123,6 +152,32 @@ export function TopBar({
       </div>
 
       <div className="flex items-center gap-2">
+        <div className="group relative">
+          <button
+            type="button"
+            onClick={handleToggleSound}
+            title={soundLabel}
+            aria-label={soundAriaName}
+            aria-pressed={soundPrefs.enabled}
+            aria-describedby={soundTooltipId}
+            className="loom-card inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl text-[var(--text-primary)] transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--bg-elevated)] active:scale-95 focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)]"
+          >
+            {soundPrefs.enabled ? (
+              <Volume2 className="h-4 w-4 text-[var(--accent-blue)]" aria-hidden="true" />
+            ) : (
+              <VolumeX className="h-4 w-4 text-[var(--text-muted)]" aria-hidden="true" />
+            )}
+          </button>
+
+          <div
+            id={soundTooltipId}
+            role="tooltip"
+            className="glass-folder pointer-events-none invisible absolute top-full right-0 z-30 mt-2 w-max max-w-56 rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] opacity-0 shadow-lg transition-opacity duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+          >
+            {soundLabel}
+          </div>
+        </div>
+
         <div className="group relative">
           <button
             type="button"

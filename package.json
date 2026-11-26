@@ -10,6 +10,9 @@
     "web:test:i18n": "pnpm --filter loom-web test:i18n",
     "web:e2e": "pnpm --filter loom-web test:e2e",
     "desktop:dev": "cargo run --manifest-path apps/desktop/src-tauri/Cargo.toml",
-    "desktop:build": "cargo build --release --manifest-path apps/desktop/src-tauri/Cargo.toml"
+    "desktop:build": "cargo build --release --manifest-path apps/desktop/src-tauri/Cargo.toml",
+    "android:test": "cd apps/android && gradlew.bat testDebugUnitTest",
+    "android:build": "cd apps/android && gradlew.bat assembleDebug",
+    "android:install": "adb reverse tcp:4320 tcp:4320 && cd apps/android && gradlew.bat installDebug"
   }
 }
