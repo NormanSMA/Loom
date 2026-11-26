@@ -1,0 +1,12 @@
+{
+  "name": "loom-workspace",
+  "private": true,
+  "packageManager": "pnpm@11.1.1",
+  "scripts": {
+    "web:dev": "pnpm --filter loom-web dev",
+    "web:build": "pnpm --filter loom-web build",
+    "web:typecheck": "pnpm --filter loom-web typecheck",
+    "web:test": "pnpm --filter loom-web test",
+    "web:test:i18n": "pnpm --filter loom-web test:i18n"
+  }
+}

@@ -1,0 +1,163 @@
+@import "tailwindcss";
+
+:root {
+  --bg-canvas: #0a0a0a;
+  --bg-surface: #121212;
+  --bg-elevated: #1a1a1a;
+  --bg-glass: rgba(18, 18, 18, 0.84);
+  --border-subtle: #262626;
+  --border-strong: #3a3a3a;
+  --text-primary: #fafafa;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  --accent-blue: #3b82f6;
+  --accent-blue-soft: rgba(59, 130, 246, 0.16);
+  --accent-green: #22c55e;
+  --accent-green-soft: rgba(34, 197, 94, 0.16);
+  --accent-red: #ef4444;
+  --accent-red-soft: rgba(239, 68, 68, 0.16);
+  --accent-amber: #f59e0b;
+  --accent-amber-soft: rgba(245, 158, 11, 0.16);
+  --dot-inactive: #222226;
+}
+
+[data-theme="light"] {
+  --bg-canvas: #ffffff;
+  --bg-surface: #f4f5f7;
+  --bg-elevated: #ffffff;
+  --bg-glass: rgba(255, 255, 255, 0.86);
+  --border-subtle: #e2e4e9;
+  --border-strong: #cbd0da;
+  --text-primary: #0a0a0a;
+  --text-secondary: #4b5563;
+  --text-muted: #6b7280;
+  --accent-blue: #1d4ed8;
+  --accent-blue-soft: rgba(29, 78, 216, 0.12);
+  --accent-green: #15803d;
+  --accent-green-soft: rgba(21, 128, 61, 0.12);
+  --accent-red: #dc2626;
+  --accent-red-soft: rgba(220, 38, 38, 0.12);
+  --accent-amber: #b45309;
+  --accent-amber-soft: rgba(180, 83, 9, 0.12);
+  --dot-inactive: #d4d7df;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.loom-card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+}
+
+.loom-elevated {
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+}
+
+.loom-glass-island {
+  background-color: var(--bg-glass);
+  border: 1px solid var(--border-strong);
+  backdrop-filter: blur(14px);
+}
+
+.loom-dot-bg {
+  background-image: radial-gradient(var(--border-subtle) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+@keyframes loom-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.86);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes loom-scan {
+  0% {
+    opacity: 0.25;
+    transform: translateX(-2px);
+  }
+  50% {
+    opacity: 1;
+    transform: translateX(2px);
+  }
+  100% {
+    opacity: 0.25;
+    transform: translateX(-2px);
+  }
+}
+
+@keyframes loom-cascade {
+  0%,
+  100% {
+    opacity: 0.28;
+    transform: translateY(-1px);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(1px);
+  }
+}
+
+.glyph-pulse {
+  animation: loom-pulse 1.2s ease-in-out infinite;
+}
+
+.glyph-scan {
+  animation: loom-scan 1.1s ease-in-out infinite;
+}
+
+.glyph-cascade {
+  animation: loom-cascade 1s ease-in-out infinite;
+}
+
+.glyph-paused * {
+  animation-play-state: paused;
+}
+
+.omnibox-glow {
+  position: relative;
+}
+
+.omnibox-glow::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 1rem;
+  background: linear-gradient(90deg, var(--accent-blue), var(--accent-green));
+  opacity: 0.2;
+  pointer-events: none;
+  transition: opacity 200ms ease;
+  z-index: 0;
+}
+
+.omnibox-glow:focus-within::before {
+  opacity: 0.72;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glyph-pulse,
+  .glyph-scan,
+  .glyph-cascade {
+    animation: none;
+    opacity: 0.85;
+    transform: none;
+  }
+}
