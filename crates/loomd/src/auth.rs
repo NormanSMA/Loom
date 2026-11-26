@@ -31,6 +31,13 @@ pub struct ExchangeResult {
     pub session_token: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TotpSetup {
+    pub otpauth_uri: String,
+    pub secret_base32: String,
+    pub enrolled: bool,
+}
+
 #[derive(Debug, Clone)]
 struct StoredDevice {
     view: DeviceView,
@@ -46,6 +53,8 @@ struct PendingTicket {
 pub struct AuthManager {
     pending: RwLock<HashMap<String, PendingTicket>>,
     devices: RwLock<Vec<StoredDevice>>,
+    totp_secret: RwLock<Option<Vec<u8>>>,
+    totp_enrolled: RwLock<bool>,
 }
 
 impl Default for AuthManager {
@@ -59,6 +68,8 @@ impl AuthManager {
         Self {
             pending: RwLock::new(HashMap::new()),
             devices: RwLock::new(Vec::new()),
+            totp_secret: RwLock::new(None),
+            totp_enrolled: RwLock::new(false),
         }
     }
 
@@ -153,6 +164,51 @@ impl AuthManager {
         devices
             .iter()
             .any(|d| !d.view.revoked && d.token_hash == candidate)
+    }
+
+    pub async fn totp_enrolled(&self) -> bool {
+        *self.totp_enrolled.read().await
+    }
+
+    pub async fn setup_totp(&self, account: &str) -> Result<TotpSetup, String> {
+        let mut secret = vec![0_u8; 20];
+        rand::thread_rng().fill_bytes(&mut secret);
+        let clean_account = if account.trim().is_empty() {
+            "owner@loom.local"
+        } else {
+            account.trim()
+        };
+        let totp = TOTP::new(
+            Algorithm::SHA1,
+            6,
+            1,
+            30,
+            secret.clone(),
+            Some("Loom".to_string()),
+            clean_account.to_string(),
+        )
+        .map_err(|e| e.to_string())?;
+
+        *self.totp_secret.write().await = Some(secret);
+        *self.totp_enrolled.write().await = false;
+
+        Ok(TotpSetup {
+            otpauth_uri: totp.get_url(),
+            secret_base32: totp.get_secret_base32(),
+            enrolled: false,
+        })
+    }
+
+    pub async fn verify_and_enable_totp(&self, code: &str) -> bool {
+        let secret = self.totp_secret.read().await.clone();
+        let Some(bytes) = secret else {
+            return false;
+        };
+        if verify_totp(&bytes, code) {
+            *self.totp_enrolled.write().await = true;
+            return true;
+        }
+        false
     }
 }
 
@@ -280,5 +336,22 @@ mod tests {
 
         assert!(mgr.revoke_device(&ex.device.id).await);
         assert!(!mgr.validate_token(&ex.session_token).await);
+    }
+
+    #[tokio::test]
+    async fn totp_setup_enrolls_on_valid_code_and_rejects_invalid() {
+        let mgr = AuthManager::new();
+        assert!(!mgr.totp_enrolled().await);
+        assert!(!mgr.verify_and_enable_totp("123456").await);
+
+        let setup = mgr.setup_totp("norman@loom.local").await.unwrap();
+        assert!(setup.otpauth_uri.starts_with("otpauth://totp/"));
+        assert!(!setup.secret_base32.is_empty());
+        assert!(!mgr.verify_and_enable_totp("000000").await);
+
+        let totp = TOTP::from_url(&setup.otpauth_uri).unwrap();
+        let valid_code = totp.generate_current().unwrap();
+        assert!(mgr.verify_and_enable_totp(&valid_code).await);
+        assert!(mgr.totp_enrolled().await);
     }
 }

@@ -1,4 +1,6 @@
-use crate::auth::{AuthManager, DeviceView, ExchangeResult, PairingTicket, is_allowed_host};
+use crate::auth::{
+    AuthManager, DeviceView, ExchangeResult, PairingTicket, TotpSetup, is_allowed_host,
+};
 use crate::demo::{
     AgentActivityState, ClaudeHubBridge, LiveEvent, MissionView, TelemetrySnapshot, demo_doctor,
     demo_missions, demo_providers, demo_skills, demo_telemetry,
@@ -75,6 +77,9 @@ pub fn build_router(state: AppState, static_dir: Option<PathBuf>) -> Router {
         .route("/api/claudehub", get(claudehub))
         .route("/api/auth/pair", post(auth_pair))
         .route("/api/auth/exchange", post(auth_exchange))
+        .route("/api/auth/totp/status", get(totp_status))
+        .route("/api/auth/totp/setup", post(totp_setup))
+        .route("/api/auth/totp/verify", post(totp_verify))
         .route("/api/devices", get(list_devices))
         .route("/api/devices/{id}", delete(revoke_device))
         .route("/api/emergency-stop", post(emergency_stop))
@@ -425,6 +430,46 @@ async fn auth_exchange(
         .ok_or(StatusCode::UNAUTHORIZED)
 }
 
+#[derive(Debug, Serialize)]
+struct TotpStatusResp {
+    enrolled: bool,
+    remote_enabled: bool,
+    bind: String,
+}
+
+async fn totp_status(State(state): State<AppState>) -> Json<TotpStatusResp> {
+    Json(TotpStatusResp {
+        enrolled: state.auth.totp_enrolled().await,
+        remote_enabled: state.config.remote_enabled,
+        bind: state.config.bind.clone(),
+    })
+}
+
+async fn totp_setup(State(state): State<AppState>) -> Result<Json<TotpSetup>, StatusCode> {
+    state
+        .auth
+        .setup_totp("owner@loom.local")
+        .await
+        .map(Json)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+#[derive(Debug, Deserialize)]
+struct TotpVerifyReq {
+    code: String,
+}
+
+async fn totp_verify(
+    State(state): State<AppState>,
+    Json(req): Json<TotpVerifyReq>,
+) -> Result<Json<Value>, StatusCode> {
+    if state.auth.verify_and_enable_totp(&req.code).await {
+        Ok(Json(json!({ "verified": true, "enrolled": true })))
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
+    }
+}
+
 async fn list_devices(State(state): State<AppState>) -> Json<Vec<DeviceView>> {
     Json(state.auth.list_devices().await)
 }
@@ -670,5 +715,74 @@ mod tests {
         assert!(rec.id.starts_with("loom:msn-"));
         assert!(!raw.contains("Proyectos"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn enrolls_and_verifies_totp_via_http() {
+        let (app, _) = test_app();
+
+        let status_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/auth/totp/status")
+                    .header("host", "127.0.0.1:4321")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(status_resp.status(), StatusCode::OK);
+
+        let setup_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/auth/totp/setup")
+                    .header("host", "127.0.0.1:4321")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(setup_resp.status(), StatusCode::OK);
+        let setup_bytes = axum::body::to_bytes(setup_resp.into_body(), 4096)
+            .await
+            .unwrap();
+        let setup: TotpSetup = serde_json::from_slice(&setup_bytes).unwrap();
+        let code = totp_rs::TOTP::from_url(&setup.otpauth_uri)
+            .unwrap()
+            .generate_current()
+            .unwrap();
+
+        let bad_verify = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/auth/totp/verify")
+                    .header("host", "127.0.0.1:4321")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"code":"000000"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(bad_verify.status(), StatusCode::UNAUTHORIZED);
+
+        let ok_verify = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/auth/totp/verify")
+                    .header("host", "127.0.0.1:4321")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({ "code": code }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(ok_verify.status(), StatusCode::OK);
     }
 }

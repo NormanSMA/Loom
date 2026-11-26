@@ -69,8 +69,11 @@ function LoomShell() {
           {tab === 'security' && (
             <SecurityView
               devices={loom.devices}
+              totpStatus={loom.totpStatus}
               onCreatePairing={loom.createPairing}
               onRevokeDevice={loom.revokeDevice}
+              onSetupTotp={loom.setupTotp}
+              onVerifyTotp={loom.verifyTotp}
               onSimulateOffline={() => loom.setSimulatedOffline(true)}
             />
           )}

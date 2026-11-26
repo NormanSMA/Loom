@@ -117,6 +117,18 @@ export interface PairingTicket {
   expires_at: string
 }
 
+export interface TotpStatus {
+  enrolled: boolean
+  remote_enabled: boolean
+  bind: string
+}
+
+export interface TotpSetup {
+  otpauth_uri: string
+  secret_base32: string
+  enrolled: boolean
+}
+
 export interface DeviceView {
   id: string
   label: string
